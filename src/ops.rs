@@ -307,6 +307,9 @@ pub enum Operator {
     TableSize {
         table_index: Table,
     },
+    TableFill {
+        table_index: Table,
+    },
     MemorySize {
         mem: Memory,
     },
@@ -319,6 +322,13 @@ pub enum Operator {
     },
     MemoryFill {
         mem: Memory,
+    },
+    MemoryInit {
+        mem: Memory,
+        data_index: u32,
+    },
+    DataDrop {
+        data_index: u32,
     },
 
     V128Load {
@@ -661,7 +671,7 @@ pub enum Operator {
     },
     RefIsNull,
     RefNull {
-        sig_index: Signature,
+        ty: Type,
     },
     RefFunc {
         func_index: Func,
@@ -933,6 +943,9 @@ impl<'a, 'b> std::convert::TryFrom<&'b wasmparser::Operator<'a>> for Operator {
             &wasmparser::Operator::TableSize { table } => Ok(Operator::TableSize {
                 table_index: Table::from(table),
             }),
+            &wasmparser::Operator::TableFill { table } => Ok(Operator::TableFill {
+                table_index: Table::from(table),
+            }),
             &wasmparser::Operator::MemorySize { mem, .. } => Ok(Operator::MemorySize {
                 mem: Memory::from(mem),
             }),
@@ -946,6 +959,11 @@ impl<'a, 'b> std::convert::TryFrom<&'b wasmparser::Operator<'a>> for Operator {
             &wasmparser::Operator::MemoryFill { mem } => Ok(Operator::MemoryFill {
                 mem: Memory::from(mem),
             }),
+            &wasmparser::Operator::MemoryInit { data_index, mem } => Ok(Operator::MemoryInit {
+                mem: Memory::from(mem),
+                data_index,
+            }),
+            &wasmparser::Operator::DataDrop { data_index } => Ok(Operator::DataDrop { data_index }),
 
             &wasmparser::Operator::V128Load { memarg } => Ok(Operator::V128Load {
                 memory: memarg.into(),
@@ -1306,11 +1324,23 @@ impl<'a, 'b> std::convert::TryFrom<&'b wasmparser::Operator<'a>> for Operator {
                 sig_index: Signature::from(type_index),
             }),
             &wasmparser::Operator::RefIsNull => Ok(Operator::RefIsNull),
-            &wasmparser::Operator::RefNull {
-                hty: wasmparser::HeapType::Concrete(wasmparser::UnpackedIndex::Module(sig)),
-            } => Ok(Operator::RefNull {
-                sig_index: Signature::from(sig),
-            }),
+            &wasmparser::Operator::RefNull { hty } => {
+                let ty = match hty {
+                    wasmparser::HeapType::Concrete(wasmparser::UnpackedIndex::Module(sig)) => {
+                        Type::TypedFuncRef(true, sig)
+                    }
+                    wasmparser::HeapType::Abstract {
+                        shared: false,
+                        ty: wasmparser::AbstractHeapType::Func,
+                    } => Type::FuncRef,
+                    wasmparser::HeapType::Abstract {
+                        shared: false,
+                        ty: wasmparser::AbstractHeapType::Extern,
+                    } => Type::ExternRef,
+                    _ => return Err(()),
+                };
+                Ok(Operator::RefNull { ty })
+            }
             &wasmparser::Operator::RefFunc { function_index } => Ok(Operator::RefFunc {
                 func_index: Func::from(function_index),
             }),

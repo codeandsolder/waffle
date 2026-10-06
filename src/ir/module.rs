@@ -5,7 +5,7 @@ use super::{
 use crate::entity::{EntityRef, EntityVec};
 use crate::ir::{Debug, DebugMap, FunctionBody};
 use crate::{backend, frontend};
-use anyhow::Result;
+use anyhow::{Context, Result};
 use std::collections::BTreeMap;
 
 pub use crate::frontend::FrontendOptions;
@@ -50,8 +50,11 @@ pub struct Module<'a> {
     pub imports: Vec<Import>,
     /// Exports from this module.
     pub exports: Vec<Export>,
-    /// Memories/heapds that this module contains.
+    /// Memories/heaps that this module contains.
     pub memories: EntityVec<Memory, MemoryData>,
+    /// Data segments in original data-section index order. Active segments are
+    /// also mirrored into their memory's `segments` for interpreter startup.
+    pub data_segments: Vec<DataSegment>,
     /// The "start function" invoked at instantiation, if any.
     pub start_func: Option<Func>,
     /// Debug-info associated with function bodies: interning pools
@@ -96,6 +99,18 @@ pub struct MemorySegment {
     pub offset: usize,
     /// The data, overlaid on previously-existing data at this offset.
     pub data: Vec<u8>,
+}
+
+/// A data-section segment, retained in original index order so bulk-memory
+/// `memory.init` / `data.drop` operators keep referring to the same segment.
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum DataSegment {
+    Passive(Vec<u8>),
+    Active {
+        memory: Memory,
+        offset: usize,
+        data: Vec<u8>,
+    },
 }
 
 /// A table definition.
@@ -233,6 +248,7 @@ impl<'a> Module<'a> {
             imports: vec![],
             exports: vec![],
             memories: EntityVec::default(),
+            data_segments: vec![],
             start_func: None,
             debug: Debug::default(),
             debug_map: DebugMap::default(),
@@ -272,6 +288,7 @@ impl<'a> Module<'a> {
             imports: self.imports,
             exports: self.exports,
             memories: self.memories,
+            data_segments: self.data_segments,
             start_func: self.start_func,
             debug: self.debug,
             debug_map: self.debug_map,
@@ -323,7 +340,8 @@ impl<'a> Module<'a> {
     pub fn expand_all_funcs(&mut self) -> Result<()> {
         for id in 0..self.funcs.len() {
             let id = Func::new(id);
-            self.expand_func(id)?;
+            self.expand_func(id)
+                .with_context(|| format!("expand function {}", id.index()))?;
         }
         Ok(())
     }
@@ -369,6 +387,7 @@ impl<'a> Module<'a> {
             imports: vec![],
             exports: vec![],
             memories: EntityVec::default(),
+            data_segments: vec![],
             start_func: None,
             debug: Debug::default(),
             debug_map: DebugMap::default(),

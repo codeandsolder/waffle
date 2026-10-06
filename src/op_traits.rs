@@ -219,13 +219,18 @@ pub fn op_inputs(
             Ok(vec![Type::I32, module.tables[*table_index].ty].into())
         }
         Operator::TableGrow { table_index } => {
-            Ok(vec![Type::I32, module.tables[*table_index].ty].into())
+            Ok(vec![module.tables[*table_index].ty, Type::I32].into())
         }
         Operator::TableSize { .. } => Ok(Cow::Borrowed(&[])),
+        Operator::TableFill { table_index } => {
+            Ok(vec![Type::I32, module.tables[*table_index].ty, Type::I32].into())
+        }
         Operator::MemorySize { .. } => Ok(Cow::Borrowed(&[])),
         Operator::MemoryGrow { .. } => Ok(Cow::Borrowed(&[Type::I32])),
         Operator::MemoryCopy { .. } => Ok(Cow::Borrowed(&[Type::I32, Type::I32, Type::I32])),
         Operator::MemoryFill { .. } => Ok(Cow::Borrowed(&[Type::I32, Type::I32, Type::I32])),
+        Operator::MemoryInit { .. } => Ok(Cow::Borrowed(&[Type::I32, Type::I32, Type::I32])),
+        Operator::DataDrop { .. } => Ok(Cow::Borrowed(&[])),
 
         Operator::V128Load { .. } => Ok(Cow::Borrowed(&[Type::I32])),
         Operator::V128Load8x8S { .. } => Ok(Cow::Borrowed(&[Type::I32])),
@@ -691,12 +696,15 @@ pub fn op_outputs(
         Operator::I64ReinterpretF64 => Ok(Cow::Borrowed(&[Type::I64])),
         Operator::TableGet { table_index } => Ok(vec![module.tables[*table_index].ty].into()),
         Operator::TableSet { .. } => Ok(Cow::Borrowed(&[])),
-        Operator::TableGrow { .. } => Ok(Cow::Borrowed(&[])),
+        Operator::TableGrow { .. } => Ok(Cow::Borrowed(&[Type::I32])),
         Operator::TableSize { .. } => Ok(Cow::Borrowed(&[Type::I32])),
+        Operator::TableFill { .. } => Ok(Cow::Borrowed(&[])),
         Operator::MemorySize { .. } => Ok(Cow::Borrowed(&[Type::I32])),
         Operator::MemoryGrow { .. } => Ok(Cow::Borrowed(&[Type::I32])),
         Operator::MemoryCopy { .. } => Ok(Cow::Borrowed(&[])),
         Operator::MemoryFill { .. } => Ok(Cow::Borrowed(&[])),
+        Operator::MemoryInit { .. } => Ok(Cow::Borrowed(&[])),
+        Operator::DataDrop { .. } => Ok(Cow::Borrowed(&[])),
 
         Operator::V128Load { .. } => Ok(Cow::Borrowed(&[Type::V128])),
         Operator::V128Load8x8S { .. } => Ok(Cow::Borrowed(&[Type::I32])),
@@ -843,9 +851,9 @@ pub fn op_outputs(
         Operator::I16x8ExtendHighI8x16S => Ok(Cow::Borrowed(&[Type::V128])),
         Operator::I16x8ExtendLowI8x16U => Ok(Cow::Borrowed(&[Type::V128])),
         Operator::I16x8ExtendHighI8x16U => Ok(Cow::Borrowed(&[Type::V128])),
-        Operator::I16x8Shl => Ok(Cow::Borrowed(&[Type::V128, Type::I32])),
-        Operator::I16x8ShrS => Ok(Cow::Borrowed(&[Type::V128, Type::I32])),
-        Operator::I16x8ShrU => Ok(Cow::Borrowed(&[Type::V128, Type::I32])),
+        Operator::I16x8Shl => Ok(Cow::Borrowed(&[Type::V128])),
+        Operator::I16x8ShrS => Ok(Cow::Borrowed(&[Type::V128])),
+        Operator::I16x8ShrU => Ok(Cow::Borrowed(&[Type::V128])),
         Operator::I16x8Add => Ok(Cow::Borrowed(&[Type::V128])),
         Operator::I16x8AddSatS => Ok(Cow::Borrowed(&[Type::V128])),
         Operator::I16x8AddSatU => Ok(Cow::Borrowed(&[Type::V128])),
@@ -873,9 +881,9 @@ pub fn op_outputs(
         Operator::I32x4ExtendHighI16x8S => Ok(Cow::Borrowed(&[Type::V128])),
         Operator::I32x4ExtendLowI16x8U => Ok(Cow::Borrowed(&[Type::V128])),
         Operator::I32x4ExtendHighI16x8U => Ok(Cow::Borrowed(&[Type::V128])),
-        Operator::I32x4Shl => Ok(Cow::Borrowed(&[Type::V128, Type::I32])),
-        Operator::I32x4ShrS => Ok(Cow::Borrowed(&[Type::V128, Type::I32])),
-        Operator::I32x4ShrU => Ok(Cow::Borrowed(&[Type::V128, Type::I32])),
+        Operator::I32x4Shl => Ok(Cow::Borrowed(&[Type::V128])),
+        Operator::I32x4ShrS => Ok(Cow::Borrowed(&[Type::V128])),
+        Operator::I32x4ShrU => Ok(Cow::Borrowed(&[Type::V128])),
         Operator::I32x4Add => Ok(Cow::Borrowed(&[Type::V128])),
         Operator::I32x4Sub => Ok(Cow::Borrowed(&[Type::V128])),
         Operator::I32x4Mul => Ok(Cow::Borrowed(&[Type::V128])),
@@ -897,9 +905,9 @@ pub fn op_outputs(
         Operator::I64x2ExtendHighI32x4S => Ok(Cow::Borrowed(&[Type::V128])),
         Operator::I64x2ExtendLowI32x4U => Ok(Cow::Borrowed(&[Type::V128])),
         Operator::I64x2ExtendHighI32x4U => Ok(Cow::Borrowed(&[Type::V128])),
-        Operator::I64x2Shl => Ok(Cow::Borrowed(&[Type::V128, Type::I32])),
-        Operator::I64x2ShrS => Ok(Cow::Borrowed(&[Type::V128, Type::I32])),
-        Operator::I64x2ShrU => Ok(Cow::Borrowed(&[Type::V128, Type::I32])),
+        Operator::I64x2Shl => Ok(Cow::Borrowed(&[Type::V128])),
+        Operator::I64x2ShrS => Ok(Cow::Borrowed(&[Type::V128])),
+        Operator::I64x2ShrU => Ok(Cow::Borrowed(&[Type::V128])),
         Operator::I64x2Add => Ok(Cow::Borrowed(&[Type::V128])),
         Operator::I64x2Sub => Ok(Cow::Borrowed(&[Type::V128])),
         Operator::I64x2Mul => Ok(Cow::Borrowed(&[Type::V128])),
@@ -956,9 +964,7 @@ pub fn op_outputs(
             Ok(Vec::from(module.signatures[*sig_index].returns.clone()).into())
         }
         Operator::RefIsNull => Ok(Cow::Borrowed(&[Type::I32])),
-        Operator::RefNull { sig_index } => {
-            Ok(vec![Type::TypedFuncRef(true, sig_index.index() as u32)].into())
-        }
+        Operator::RefNull { ty } => Ok(vec![*ty].into()),
         Operator::RefFunc { func_index } => {
             let ty = module.funcs[*func_index].sig();
             Ok(vec![Type::TypedFuncRef(true, ty.index() as u32)].into())
@@ -983,6 +989,10 @@ pub enum SideEffect {
     ReadTable,
     /// Operator can write a table element.
     WriteTable,
+    /// Operator can read a passive data segment.
+    ReadData,
+    /// Operator can mutate/drop a passive data segment.
+    WriteData,
     /// Operator can read a local.
     ReadLocal,
     /// Operator can write a local.
@@ -1183,10 +1193,13 @@ impl Operator {
             Operator::TableSet { .. } => &[WriteTable, Trap],
             Operator::TableGrow { .. } => &[WriteTable, Trap],
             Operator::TableSize { .. } => &[ReadTable],
+            Operator::TableFill { .. } => &[WriteTable, Trap],
             Operator::MemorySize { .. } => &[ReadMem],
             Operator::MemoryGrow { .. } => &[WriteMem, Trap],
             Operator::MemoryCopy { .. } => &[Trap, ReadMem, WriteMem],
             Operator::MemoryFill { .. } => &[Trap, WriteMem],
+            Operator::MemoryInit { .. } => &[Trap, ReadData, WriteMem],
+            Operator::DataDrop { .. } => &[WriteData],
 
             Operator::V128Load { .. } => &[Trap, ReadMem],
             Operator::V128Load8x8S { .. } => &[Trap, ReadMem],
@@ -1799,12 +1812,17 @@ impl std::fmt::Display for Operator {
             Operator::TableSet { table_index, .. } => write!(f, "table_set<{}>", table_index)?,
             Operator::TableGrow { table_index, .. } => write!(f, "table_grow<{}>", table_index)?,
             Operator::TableSize { table_index, .. } => write!(f, "table_size<{}>", table_index)?,
+            Operator::TableFill { table_index } => write!(f, "table_fill<{}>", table_index)?,
             Operator::MemorySize { mem } => write!(f, "memory_size<{}>", mem)?,
             Operator::MemoryGrow { mem } => write!(f, "memory_grow<{}>", mem)?,
             Operator::MemoryCopy { dst_mem, src_mem } => {
                 write!(f, "memory_copy<{}, {}>", dst_mem, src_mem)?
             }
             Operator::MemoryFill { mem } => write!(f, "memory_fill<{}>", mem)?,
+            Operator::MemoryInit { mem, data_index } => {
+                write!(f, "memory_init<{}, data{}>", mem, data_index)?
+            }
+            Operator::DataDrop { data_index } => write!(f, "data_drop<data{}>", data_index)?,
 
             Operator::V128Load { memory } => write!(f, "v128load<{}>", memory)?,
             Operator::V128Load8x8S { memory } => write!(f, "v128load8x8s<{}>", memory)?,
@@ -2078,7 +2096,7 @@ impl std::fmt::Display for Operator {
 
             Operator::CallRef { sig_index } => write!(f, "call_ref<{}>", sig_index)?,
             Operator::RefIsNull => write!(f, "ref_is_null")?,
-            Operator::RefNull { sig_index } => write!(f, "ref_null<{}>", sig_index)?,
+            Operator::RefNull { ty } => write!(f, "ref_null<{}>", ty)?,
             Operator::RefFunc { func_index } => write!(f, "ref_func<{}>", func_index)?,
         }
 

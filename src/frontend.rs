@@ -152,11 +152,16 @@ fn handle_payload<'a>(
                             ImportKind::Global(global)
                         }
                         TypeRef::Table(ty) => {
+                            let element_ty: Type = ty.element_type.into();
                             let table = module.tables.push(TableData {
-                                ty: ty.element_type.into(),
+                                ty: element_ty,
                                 initial: ty.initial,
                                 max: ty.maximum,
-                                func_elements: Some(vec![]),
+                                func_elements: matches!(
+                                    element_ty,
+                                    Type::FuncRef | Type::TypedFuncRef(..)
+                                )
+                                .then(Vec::new),
                             });
                             ImportKind::Table(table)
                         }
@@ -221,11 +226,13 @@ fn handle_payload<'a>(
         Payload::TableSection(reader) => {
             for table in reader {
                 let table = table?;
+                let element_ty: Type = table.ty.element_type.into();
                 module.tables.push(TableData {
-                    ty: table.ty.element_type.into(),
+                    ty: element_ty,
                     initial: table.ty.initial,
                     max: table.ty.maximum,
-                    func_elements: Some(vec![]),
+                    func_elements: matches!(element_ty, Type::FuncRef | Type::TypedFuncRef(..))
+                        .then(Vec::new),
                 });
             }
         }
@@ -280,7 +287,11 @@ fn handle_payload<'a>(
             for segment in reader {
                 let segment = segment?;
                 match &segment.kind {
-                    DataKind::Passive => {}
+                    DataKind::Passive => {
+                        module
+                            .data_segments
+                            .push(DataSegment::Passive(segment.data.to_vec()));
+                    }
                     DataKind::Active {
                         memory_index,
                         offset_expr,
@@ -288,9 +299,15 @@ fn handle_payload<'a>(
                         let data = segment.data.to_vec();
                         let memory = Memory::from(*memory_index);
                         let offset = parse_init_expr(offset_expr)?.unwrap_or(0) as usize;
-                        module.memories[memory]
-                            .segments
-                            .push(MemorySegment { offset, data });
+                        module.memories[memory].segments.push(MemorySegment {
+                            offset,
+                            data: data.clone(),
+                        });
+                        module.data_segments.push(DataSegment::Active {
+                            memory,
+                            offset,
+                            data,
+                        });
                     }
                 }
             }
@@ -768,7 +785,9 @@ impl LocalTracker {
             Type::F32 => body.add_op(at_block, Operator::F32Const { value: 0 }, &[], &[ty]),
             Type::F64 => body.add_op(at_block, Operator::F64Const { value: 0 }, &[], &[ty]),
             Type::V128 => body.add_op(at_block, Operator::V128Const { value: 0 }, &[], &[ty]),
-            _ => todo!("unsupported type: {:?}", ty),
+            Type::FuncRef | Type::ExternRef | Type::TypedFuncRef(..) => {
+                body.add_op(at_block, Operator::RefNull { ty }, &[], &[ty])
+            }
         };
         log::trace!(
             "created default value {} of type {} at block {}",
@@ -1065,7 +1084,12 @@ impl<'a, 'b> FunctionBodyBuilder<'a, 'b> {
 
             wasmparser::Operator::LocalTee { local_index } => {
                 let local_index = Local::from(*local_index);
-                let (_ty, value) = *self.op_stack.last().unwrap();
+                let Some(&(_ty, value)) = self.op_stack.last() else {
+                    bail!(FrontendError::Internal(format!(
+                        "local.tee {} with empty operand stack",
+                        local_index.index()
+                    )));
+                };
                 self.locals.set(local_index, value);
             }
 
@@ -1484,8 +1508,11 @@ impl<'a, 'b> FunctionBodyBuilder<'a, 'b> {
             | wasmparser::Operator::RefIsNull
             | wasmparser::Operator::RefNull { .. }
             | wasmparser::Operator::RefFunc { .. }
+            | wasmparser::Operator::TableFill { .. }
             | wasmparser::Operator::MemoryFill { .. }
-            | wasmparser::Operator::MemoryCopy { .. } => {
+            | wasmparser::Operator::MemoryCopy { .. }
+            | wasmparser::Operator::MemoryInit { .. }
+            | wasmparser::Operator::DataDrop { .. } => {
                 self.emit(Operator::try_from(&op).unwrap(), loc)?
             }
 
@@ -2024,7 +2051,10 @@ impl<'a, 'b> FunctionBodyBuilder<'a, 'b> {
         let args = &mut self.body.arg_pool[input_operands];
         for (i, &input) in inputs.into_iter().enumerate().rev() {
             let (stack_top_ty, stack_top) = self.op_stack.pop().unwrap();
-            assert_eq!(stack_top_ty, input);
+            assert_eq!(
+                stack_top_ty, input,
+                "operand type mismatch while lowering {op:?}"
+            );
             args[i] = stack_top;
         }
         log::trace!(" -> operands: {:?}", input_operands);

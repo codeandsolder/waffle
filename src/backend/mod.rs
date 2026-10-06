@@ -2,7 +2,9 @@
 
 use crate::cfg::CFGInfo;
 use crate::entity::EntityRef;
-use crate::ir::{ExportKind, FuncDecl, FunctionBody, ImportKind, Module, Type, Value, ValueDef};
+use crate::ir::{
+    DataSegment, ExportKind, FuncDecl, FunctionBody, ImportKind, Module, Type, Value, ValueDef,
+};
 use crate::Operator;
 use anyhow::Result;
 #[cfg(feature = "parallel")]
@@ -585,6 +587,9 @@ impl<'a> WasmFuncBackend<'a> {
             Operator::TableSize { table_index } => Some(wasm_encoder::Instruction::TableSize(
                 table_index.index() as u32,
             )),
+            Operator::TableFill { table_index } => Some(wasm_encoder::Instruction::TableFill(
+                table_index.index() as u32,
+            )),
             Operator::MemorySize { mem } => {
                 Some(wasm_encoder::Instruction::MemorySize(mem.index() as u32))
             }
@@ -599,6 +604,15 @@ impl<'a> WasmFuncBackend<'a> {
             }
             Operator::MemoryFill { mem } => {
                 Some(wasm_encoder::Instruction::MemoryFill(mem.index() as u32))
+            }
+            Operator::MemoryInit { mem, data_index } => {
+                Some(wasm_encoder::Instruction::MemoryInit {
+                    mem: mem.index() as u32,
+                    data_index: *data_index,
+                })
+            }
+            Operator::DataDrop { data_index } => {
+                Some(wasm_encoder::Instruction::DataDrop(*data_index))
             }
 
             Operator::V128Load { memory } => Some(wasm_encoder::Instruction::V128Load(
@@ -1000,9 +1014,15 @@ impl<'a> WasmFuncBackend<'a> {
                 Some(wasm_encoder::Instruction::CallRef(sig_index.index() as u32))
             }
             Operator::RefIsNull => Some(wasm_encoder::Instruction::RefIsNull),
-            Operator::RefNull { sig_index } => Some(wasm_encoder::Instruction::RefNull(
-                wasm_encoder::HeapType::Concrete(sig_index.index() as u32),
-            )),
+            Operator::RefNull { ty } => {
+                let heap_type = match ty {
+                    Type::FuncRef => wasm_encoder::HeapType::FUNC,
+                    Type::ExternRef => wasm_encoder::HeapType::EXTERN,
+                    Type::TypedFuncRef(_, sig) => wasm_encoder::HeapType::Concrete(*sig),
+                    _ => unreachable!("ref.null with non-reference type {:?}", ty),
+                };
+                Some(wasm_encoder::Instruction::RefNull(heap_type))
+            }
             Operator::RefFunc { func_index } => {
                 Some(wasm_encoder::Instruction::RefFunc(func_index.index() as u32))
             }
@@ -1210,6 +1230,16 @@ pub fn compile(module: &Module<'_>) -> anyhow::Result<Vec<u8>> {
     }
     into_mod.section(&elem);
 
+    if module
+        .data_segments
+        .iter()
+        .any(|segment| matches!(segment, DataSegment::Passive(_)))
+    {
+        into_mod.section(&wasm_encoder::DataCountSection {
+            count: module.data_segments.len() as u32,
+        });
+    }
+
     let mut code = wasm_encoder::CodeSection::new();
 
     let entries = module
@@ -1245,13 +1275,36 @@ pub fn compile(module: &Module<'_>) -> anyhow::Result<Vec<u8>> {
     into_mod.section(&code);
 
     let mut data = wasm_encoder::DataSection::new();
-    for (mem, mem_data) in module.memories.entries() {
-        for segment in &mem_data.segments {
-            data.active(
-                mem.index() as u32,
-                &wasm_encoder::ConstExpr::i32_const(segment.offset as i32),
-                segment.data.iter().copied(),
-            );
+    if module.data_segments.is_empty() {
+        // Preserve compatibility with programmatically-created Modules whose
+        // callers populate `MemoryData::segments` directly.
+        for (mem, mem_data) in module.memories.entries() {
+            for segment in &mem_data.segments {
+                data.active(
+                    mem.index() as u32,
+                    &wasm_encoder::ConstExpr::i32_const(segment.offset as i32),
+                    segment.data.iter().copied(),
+                );
+            }
+        }
+    } else {
+        for segment in &module.data_segments {
+            match segment {
+                DataSegment::Passive(bytes) => {
+                    data.passive(bytes.iter().copied());
+                }
+                DataSegment::Active {
+                    memory,
+                    offset,
+                    data: bytes,
+                } => {
+                    data.active(
+                        memory.index() as u32,
+                        &wasm_encoder::ConstExpr::i32_const(*offset as i32),
+                        bytes.iter().copied(),
+                    );
+                }
+            }
         }
     }
     into_mod.section(&data);
@@ -1282,6 +1335,12 @@ fn const_init(ty: Type, value: Option<u64>) -> wasm_encoder::ConstExpr {
         Type::I64 => wasm_encoder::ConstExpr::i64_const(bits as i64),
         Type::F32 => wasm_encoder::ConstExpr::f32_const(f32::from_bits(bits as u32).into()),
         Type::F64 => wasm_encoder::ConstExpr::f64_const(f64::from_bits(bits as u64).into()),
+        Type::FuncRef if bits == 0 => {
+            wasm_encoder::ConstExpr::ref_null(wasm_encoder::HeapType::FUNC)
+        }
+        Type::ExternRef if bits == 0 => {
+            wasm_encoder::ConstExpr::ref_null(wasm_encoder::HeapType::EXTERN)
+        }
         Type::TypedFuncRef(true, sig) if bits == 0 => {
             let hty = wasm_encoder::HeapType::Concrete(sig);
             wasm_encoder::ConstExpr::ref_null(hty)
