@@ -15,6 +15,7 @@ jobs:
           os: ubuntu-latest
     steps:
     - uses: actions/checkout@v2
+    - uses: dtolnay/rust-toolchain@1.99.0
     - name: Cache Rust build
       uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
     - name: Build
@@ -26,6 +27,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v2
+    - uses: dtolnay/rust-toolchain@1.99.0
     - name: Cache Rust build
       uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
     - run: cargo install cargo-fuzz
@@ -35,7 +37,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v2
-    - run: rustup update stable --no-self-update
-    - run: rustup default stable
-    - run: rustup component add rustfmt
+    - uses: dtolnay/rust-toolchain@1.99.0
+      with:
+        components: rustfmt
     - run: cargo fmt --all -- --check
