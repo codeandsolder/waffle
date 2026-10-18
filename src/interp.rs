@@ -23,16 +23,24 @@ pub struct InterpContext {
     pub tables: PerEntity<Table, InterpTable>,
     /// Values of globals.
     pub globals: PerEntity<Global, ConstVal>,
-    /// Concrete memory writes performed since the context was created or the
-    /// trace was last taken.
-    pub memory_writes: Vec<InterpMemoryWrite>,
+    /// Concrete memory accesses performed since the context was created or
+    /// the trace was last taken.
+    memory_accesses: Vec<InterpMemoryAccess>,
     /// Fuel remaining: allows deterministic stopping of execution.
     pub fuel: u64,
 }
 
-/// A concrete byte range written by interpreted execution.
+/// The kind of a concrete interpreted memory access.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct InterpMemoryWrite {
+pub enum InterpMemoryAccessKind {
+    Read,
+    Write,
+}
+
+/// A concrete byte range accessed by interpreted execution.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct InterpMemoryAccess {
+    pub kind: InterpMemoryAccessKind,
     pub memory: Memory,
     pub addr: u32,
     pub len: u32,
@@ -171,14 +179,14 @@ impl InterpContext {
             memories,
             tables,
             globals,
-            memory_writes: Vec::new(),
+            memory_accesses: Vec::new(),
             fuel: u64::MAX,
         })
     }
 
-    /// Return and clear the concrete memory-write trace accumulated so far.
-    pub fn take_memory_writes(&mut self) -> Vec<InterpMemoryWrite> {
-        std::mem::take(&mut self.memory_writes)
+    /// Return and clear the concrete memory-access trace accumulated so far.
+    pub fn take_memory_accesses(&mut self) -> Vec<InterpMemoryAccess> {
+        std::mem::take(&mut self.memory_accesses)
     }
 
     /// Call the given function with the given args, running the
@@ -1025,7 +1033,8 @@ pub fn const_eval(
                 let new_bytes = new_pages.checked_mul(WASM_PAGE)?;
                 global.memories[*mem].data.resize(new_bytes, 0);
                 if new_bytes > old_bytes {
-                    global.memory_writes.push(InterpMemoryWrite {
+                    global.memory_accesses.push(InterpMemoryAccess {
+                        kind: InterpMemoryAccessKind::Write,
                         memory: *mem,
                         addr: u32::try_from(old_bytes).ok()?,
                         len: u32::try_from(new_bytes - old_bytes).ok()?,
@@ -1043,6 +1052,12 @@ pub fn const_eval(
             if addr.checked_add(4)? > global.memories[memory.memory].data.len() as u32 {
                 return None;
             }
+            global.memory_accesses.push(InterpMemoryAccess {
+                kind: InterpMemoryAccessKind::Read,
+                memory: memory.memory,
+                addr,
+                len: 4,
+            });
             Some(ConstVal::I32(read_u32(
                 &global.memories[memory.memory],
                 addr,
@@ -1053,6 +1068,12 @@ pub fn const_eval(
             if addr.checked_add(8)? > global.memories[memory.memory].data.len() as u32 {
                 return None;
             }
+            global.memory_accesses.push(InterpMemoryAccess {
+                kind: InterpMemoryAccessKind::Read,
+                memory: memory.memory,
+                addr,
+                len: 8,
+            });
             Some(ConstVal::I64(read_u64(
                 &global.memories[memory.memory],
                 addr,
@@ -1063,6 +1084,12 @@ pub fn const_eval(
             if addr.checked_add(4)? > global.memories[memory.memory].data.len() as u32 {
                 return None;
             }
+            global.memory_accesses.push(InterpMemoryAccess {
+                kind: InterpMemoryAccessKind::Read,
+                memory: memory.memory,
+                addr,
+                len: 4,
+            });
             Some(ConstVal::F32(read_u32(
                 &global.memories[memory.memory],
                 addr,
@@ -1073,6 +1100,12 @@ pub fn const_eval(
             if addr.checked_add(8)? > global.memories[memory.memory].data.len() as u32 {
                 return None;
             }
+            global.memory_accesses.push(InterpMemoryAccess {
+                kind: InterpMemoryAccessKind::Read,
+                memory: memory.memory,
+                addr,
+                len: 8,
+            });
             Some(ConstVal::F64(read_u64(
                 &global.memories[memory.memory],
                 addr,
@@ -1083,15 +1116,27 @@ pub fn const_eval(
             if addr.checked_add(1)? > global.memories[memory.memory].data.len() as u32 {
                 return None;
             }
+            global.memory_accesses.push(InterpMemoryAccess {
+                kind: InterpMemoryAccessKind::Read,
+                memory: memory.memory,
+                addr,
+                len: 1,
+            });
             Some(ConstVal::I32(
                 read_u8(&global.memories[memory.memory], addr) as i8 as i32 as u32,
             ))
         }),
         (Operator::I32Load8U { memory }, [ConstVal::I32(addr)]) => ctx.and_then(|global| {
             let addr = addr.checked_add(memory.offset)?;
-            if addr.checked_add(4)? > global.memories[memory.memory].data.len() as u32 {
+            if addr.checked_add(1)? > global.memories[memory.memory].data.len() as u32 {
                 return None;
             }
+            global.memory_accesses.push(InterpMemoryAccess {
+                kind: InterpMemoryAccessKind::Read,
+                memory: memory.memory,
+                addr,
+                len: 1,
+            });
             Some(ConstVal::I32(
                 read_u8(&global.memories[memory.memory], addr) as u32,
             ))
@@ -1101,6 +1146,12 @@ pub fn const_eval(
             if addr.checked_add(2)? > global.memories[memory.memory].data.len() as u32 {
                 return None;
             }
+            global.memory_accesses.push(InterpMemoryAccess {
+                kind: InterpMemoryAccessKind::Read,
+                memory: memory.memory,
+                addr,
+                len: 2,
+            });
             Some(ConstVal::I32(
                 read_u16(&global.memories[memory.memory], addr) as i16 as i32 as u32,
             ))
@@ -1110,6 +1161,12 @@ pub fn const_eval(
             if addr.checked_add(2)? > global.memories[memory.memory].data.len() as u32 {
                 return None;
             }
+            global.memory_accesses.push(InterpMemoryAccess {
+                kind: InterpMemoryAccessKind::Read,
+                memory: memory.memory,
+                addr,
+                len: 2,
+            });
             Some(ConstVal::I32(
                 read_u16(&global.memories[memory.memory], addr) as u32,
             ))
@@ -1119,6 +1176,12 @@ pub fn const_eval(
             if addr.checked_add(1)? > global.memories[memory.memory].data.len() as u32 {
                 return None;
             }
+            global.memory_accesses.push(InterpMemoryAccess {
+                kind: InterpMemoryAccessKind::Read,
+                memory: memory.memory,
+                addr,
+                len: 1,
+            });
             Some(ConstVal::I64(
                 read_u8(&global.memories[memory.memory], addr) as i8 as i64 as u64,
             ))
@@ -1128,6 +1191,12 @@ pub fn const_eval(
             if addr.checked_add(1)? > global.memories[memory.memory].data.len() as u32 {
                 return None;
             }
+            global.memory_accesses.push(InterpMemoryAccess {
+                kind: InterpMemoryAccessKind::Read,
+                memory: memory.memory,
+                addr,
+                len: 1,
+            });
             Some(ConstVal::I64(
                 read_u8(&global.memories[memory.memory], addr) as u64,
             ))
@@ -1137,6 +1206,12 @@ pub fn const_eval(
             if addr.checked_add(2)? > global.memories[memory.memory].data.len() as u32 {
                 return None;
             }
+            global.memory_accesses.push(InterpMemoryAccess {
+                kind: InterpMemoryAccessKind::Read,
+                memory: memory.memory,
+                addr,
+                len: 2,
+            });
             Some(ConstVal::I64(
                 read_u16(&global.memories[memory.memory], addr) as i16 as i64 as u64,
             ))
@@ -1146,6 +1221,12 @@ pub fn const_eval(
             if addr.checked_add(2)? > global.memories[memory.memory].data.len() as u32 {
                 return None;
             }
+            global.memory_accesses.push(InterpMemoryAccess {
+                kind: InterpMemoryAccessKind::Read,
+                memory: memory.memory,
+                addr,
+                len: 2,
+            });
             Some(ConstVal::I64(
                 read_u16(&global.memories[memory.memory], addr) as u64,
             ))
@@ -1155,6 +1236,12 @@ pub fn const_eval(
             if addr.checked_add(4)? > global.memories[memory.memory].data.len() as u32 {
                 return None;
             }
+            global.memory_accesses.push(InterpMemoryAccess {
+                kind: InterpMemoryAccessKind::Read,
+                memory: memory.memory,
+                addr,
+                len: 4,
+            });
             Some(ConstVal::I64(
                 read_u32(&global.memories[memory.memory], addr) as i32 as i64 as u64,
             ))
@@ -1164,6 +1251,12 @@ pub fn const_eval(
             if addr.checked_add(4)? > global.memories[memory.memory].data.len() as u32 {
                 return None;
             }
+            global.memory_accesses.push(InterpMemoryAccess {
+                kind: InterpMemoryAccessKind::Read,
+                memory: memory.memory,
+                addr,
+                len: 4,
+            });
             Some(ConstVal::I64(
                 read_u32(&global.memories[memory.memory], addr) as u64,
             ))
@@ -1175,7 +1268,8 @@ pub fn const_eval(
                     return None;
                 }
                 write_u32(&mut global.memories[memory.memory], addr, *data);
-                global.memory_writes.push(InterpMemoryWrite {
+                global.memory_accesses.push(InterpMemoryAccess {
+                    kind: InterpMemoryAccessKind::Write,
                     memory: memory.memory,
                     addr,
                     len: 4,
@@ -1189,7 +1283,8 @@ pub fn const_eval(
                     return None;
                 }
                 write_u64(&mut global.memories[memory.memory], addr, *data);
-                global.memory_writes.push(InterpMemoryWrite {
+                global.memory_accesses.push(InterpMemoryAccess {
+                    kind: InterpMemoryAccessKind::Write,
                     memory: memory.memory,
                     addr,
                     len: 8,
@@ -1203,7 +1298,8 @@ pub fn const_eval(
                     return None;
                 }
                 write_u8(&mut global.memories[memory.memory], addr, *data as u8);
-                global.memory_writes.push(InterpMemoryWrite {
+                global.memory_accesses.push(InterpMemoryAccess {
+                    kind: InterpMemoryAccessKind::Write,
                     memory: memory.memory,
                     addr,
                     len: 1,
@@ -1217,7 +1313,8 @@ pub fn const_eval(
                     return None;
                 }
                 write_u16(&mut global.memories[memory.memory], addr, *data as u16);
-                global.memory_writes.push(InterpMemoryWrite {
+                global.memory_accesses.push(InterpMemoryAccess {
+                    kind: InterpMemoryAccessKind::Write,
                     memory: memory.memory,
                     addr,
                     len: 2,
@@ -1231,7 +1328,8 @@ pub fn const_eval(
                     return None;
                 }
                 write_u8(&mut global.memories[memory.memory], addr, *data as u8);
-                global.memory_writes.push(InterpMemoryWrite {
+                global.memory_accesses.push(InterpMemoryAccess {
+                    kind: InterpMemoryAccessKind::Write,
                     memory: memory.memory,
                     addr,
                     len: 1,
@@ -1245,7 +1343,8 @@ pub fn const_eval(
                     return None;
                 }
                 write_u16(&mut global.memories[memory.memory], addr, *data as u16);
-                global.memory_writes.push(InterpMemoryWrite {
+                global.memory_accesses.push(InterpMemoryAccess {
+                    kind: InterpMemoryAccessKind::Write,
                     memory: memory.memory,
                     addr,
                     len: 2,
@@ -1259,7 +1358,8 @@ pub fn const_eval(
                     return None;
                 }
                 write_u32(&mut global.memories[memory.memory], addr, *data as u32);
-                global.memory_writes.push(InterpMemoryWrite {
+                global.memory_accesses.push(InterpMemoryAccess {
+                    kind: InterpMemoryAccessKind::Write,
                     memory: memory.memory,
                     addr,
                     len: 4,
@@ -1273,7 +1373,8 @@ pub fn const_eval(
                     return None;
                 }
                 write_u32(&mut global.memories[memory.memory], addr, *data);
-                global.memory_writes.push(InterpMemoryWrite {
+                global.memory_accesses.push(InterpMemoryAccess {
+                    kind: InterpMemoryAccessKind::Write,
                     memory: memory.memory,
                     addr,
                     len: 4,
@@ -1287,7 +1388,8 @@ pub fn const_eval(
                     return None;
                 }
                 write_u64(&mut global.memories[memory.memory], addr, *data);
-                global.memory_writes.push(InterpMemoryWrite {
+                global.memory_accesses.push(InterpMemoryAccess {
+                    kind: InterpMemoryAccessKind::Write,
                     memory: memory.memory,
                     addr,
                     len: 8,
