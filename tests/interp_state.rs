@@ -1,6 +1,8 @@
 use anyhow::{bail, Context, Result};
 use waffle::entity::EntityRef;
-use waffle::{ConstVal, ExportKind, FrontendOptions, Func, InterpContext, Module};
+use waffle::{
+    ConstVal, ExportKind, FrontendOptions, Func, InterpContext, InterpMemoryAccessKind, Module,
+};
 
 fn export_func(module: &Module<'_>, name: &str) -> Result<Func> {
     let export = module
@@ -70,6 +72,9 @@ fn interpreter_records_exact_store_and_growth_ranges() -> Result<()> {
                 local.get $base
                 i32.const 287454020
                 i32.store offset=4
+                local.get $base
+                i32.load offset=4
+                drop
                 i32.const 1
                 memory.grow
                 drop))"#,
@@ -80,16 +85,66 @@ fn interpreter_records_exact_store_and_growth_ranges() -> Result<()> {
     let mut context = InterpContext::new(&module)?;
 
     context.call(&module, write, &[ConstVal::I32(8)]).ok()?;
-    let writes = context.take_memory_writes();
-    assert_eq!(writes.len(), 2);
+    let accesses = context.take_memory_accesses();
+    assert_eq!(accesses.len(), 3);
     assert_eq!(
-        (writes[0].memory.index(), writes[0].addr, writes[0].len),
-        (0, 12, 4)
+        (
+            accesses[0].kind,
+            accesses[0].memory.index(),
+            accesses[0].addr,
+            accesses[0].len
+        ),
+        (InterpMemoryAccessKind::Write, 0, 12, 4)
     );
     assert_eq!(
-        (writes[1].memory.index(), writes[1].addr, writes[1].len),
-        (0, 65_536, 65_536)
+        (
+            accesses[1].kind,
+            accesses[1].memory.index(),
+            accesses[1].addr,
+            accesses[1].len
+        ),
+        (InterpMemoryAccessKind::Read, 0, 12, 4)
     );
-    assert!(context.take_memory_writes().is_empty());
+    assert_eq!(
+        (
+            accesses[2].kind,
+            accesses[2].memory.index(),
+            accesses[2].addr,
+            accesses[2].len
+        ),
+        (InterpMemoryAccessKind::Write, 0, 65_536, 65_536)
+    );
+    assert!(context.take_memory_accesses().is_empty());
+    Ok(())
+}
+
+#[test]
+fn interpreter_i32_load8_u_accepts_last_memory_byte() -> Result<()> {
+    let bytes = wat::parse_str(
+        r#"(module
+            (memory 1)
+            (func (export "read") (result i32)
+                i32.const 65535
+                i32.load8_u))"#,
+    )?;
+    let mut module = Module::from_wasm_bytes(&bytes, &FrontendOptions::default())?;
+    module.expand_all_funcs()?;
+    let read = export_func(&module, "read")?;
+    let mut context = InterpContext::new(&module)?;
+    assert_eq!(
+        context.call(&module, read, &[]).ok()?.as_slice(),
+        [ConstVal::I32(0)]
+    );
+    let accesses = context.take_memory_accesses();
+    assert_eq!(accesses.len(), 1);
+    assert_eq!(
+        (
+            accesses[0].kind,
+            accesses[0].memory.index(),
+            accesses[0].addr,
+            accesses[0].len
+        ),
+        (InterpMemoryAccessKind::Read, 0, 65_535, 1)
+    );
     Ok(())
 }
