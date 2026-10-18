@@ -4,6 +4,7 @@ use crate::entity::{EntityRef, PerEntity};
 use crate::ir::*;
 use crate::ops::Operator;
 use smallvec::{smallvec, SmallVec};
+use std::convert::TryFrom;
 
 use fxhash::FxHashMap as HashMap;
 
@@ -11,6 +12,7 @@ use fxhash::FxHashMap as HashMap;
 /// the size somewhat (apply an implementation limit) so we do not
 /// have unreasonably large state.
 const MAX_PAGES: usize = 2048; // 2048 * 64KiB = 128MiB
+const MAX_TABLE_ELEMENTS: usize = 100_000;
 
 /// Context for the IR interpreter. Corresponds roughly to Wasm module
 /// state.
@@ -21,8 +23,19 @@ pub struct InterpContext {
     pub tables: PerEntity<Table, InterpTable>,
     /// Values of globals.
     pub globals: PerEntity<Global, ConstVal>,
+    /// Concrete memory writes performed since the context was created or the
+    /// trace was last taken.
+    pub memory_writes: Vec<InterpMemoryWrite>,
     /// Fuel remaining: allows deterministic stopping of execution.
     pub fuel: u64,
+}
+
+/// A concrete byte range written by interpreted execution.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct InterpMemoryWrite {
+    pub memory: Memory,
+    pub addr: u32,
+    pub len: u32,
 }
 
 /// The state of one interpreter memory.
@@ -35,7 +48,15 @@ pub struct InterpMemory {
 /// The state of one interpreter table.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct InterpTable {
+    /// Concrete function references for funcref tables. Externref contents are
+    /// intentionally not modeled, but their logical size still is.
     pub elements: Vec<Func>,
+    /// Logical table size, including externref tables whose values are opaque.
+    pub size: usize,
+    /// Declared maximum table size, if any.
+    pub max: Option<usize>,
+    /// Whether `elements` models this table's contents.
+    pub stores_functions: bool,
 }
 
 /// One stack frame in the interpreted execution context.
@@ -64,6 +85,8 @@ pub enum ConstVal {
     I64(u64),
     F32(u32),
     F64(u64),
+    /// A concrete null reference. Non-null reference values remain unsupported.
+    NullRef,
     #[default]
     None,
 }
@@ -106,8 +129,29 @@ impl InterpContext {
 
         let mut tables = PerEntity::default();
         for (table, data) in module.tables.entries() {
+            let size = usize::try_from(data.initial)
+                .map_err(|_| anyhow::anyhow!("Table initial size does not fit usize"))?;
+            let max = data
+                .max
+                .map(usize::try_from)
+                .transpose()
+                .map_err(|_| anyhow::anyhow!("Table maximum size does not fit usize"))?;
+            let stores_functions = data.func_elements.is_some();
+            let mut elements = data.func_elements.clone().unwrap_or_default();
+            if size > MAX_TABLE_ELEMENTS {
+                anyhow::bail!("Table initial size exceeds interpreter limit");
+            }
+            if stores_functions {
+                if elements.len() > size {
+                    anyhow::bail!("Function table initializer exceeds declared table size");
+                }
+                elements.resize(size, Func::invalid());
+            }
             let interp_table = InterpTable {
-                elements: data.func_elements.clone().unwrap_or(vec![]),
+                elements,
+                size,
+                max,
+                stores_functions,
             };
             tables[table] = interp_table;
         }
@@ -127,8 +171,14 @@ impl InterpContext {
             memories,
             tables,
             globals,
+            memory_writes: Vec::new(),
             fuel: u64::MAX,
         })
+    }
+
+    /// Return and clear the concrete memory-write trace accumulated so far.
+    pub fn take_memory_writes(&mut self) -> Vec<InterpMemoryWrite> {
+        std::mem::take(&mut self.memory_writes)
     }
 
     /// Call the given function with the given args, running the
@@ -205,8 +255,28 @@ impl InterpContext {
                                 multivalue[0]
                             })
                             .collect::<Vec<_>>();
-                        let idx = args.last().unwrap().as_u32().unwrap() as usize;
-                        let func = self.tables[table_index].elements[idx];
+                        let Some(idx) = args.last().and_then(|value| value.as_u32()) else {
+                            return InterpResult::Trap(
+                                frame.func,
+                                frame.cur_block,
+                                inst_idx as u32,
+                            );
+                        };
+                        let table = &self.tables[table_index];
+                        let Some(func) = table.elements.get(idx as usize).copied() else {
+                            return InterpResult::Trap(
+                                frame.func,
+                                frame.cur_block,
+                                inst_idx as u32,
+                            );
+                        };
+                        if !func.is_valid() {
+                            return InterpResult::Trap(
+                                frame.func,
+                                frame.cur_block,
+                                inst_idx as u32,
+                            );
+                        }
                         let result = self.call(module, func, &args[..args.len() - 1]);
                         match result {
                             InterpResult::Ok(vals) => vals,
@@ -902,26 +972,66 @@ pub fn const_eval(
             ConstVal::None
         }),
 
-        (Operator::TableGet { .. }, _)
-        | (Operator::TableSet { .. }, _)
-        | (Operator::TableGrow { .. }, _) => None,
+        (Operator::RefNull { .. }, []) => Some(ConstVal::NullRef),
+        (Operator::TableGet { .. }, _) => None,
+        (Operator::TableSet { table_index }, [ConstVal::I32(index), ConstVal::NullRef]) => ctx
+            .and_then(|global| {
+                let table = &mut global.tables[*table_index];
+                let index = usize::try_from(*index).ok()?;
+                if index >= table.size {
+                    return None;
+                }
+                if table.stores_functions {
+                    table.elements[index] = Func::invalid();
+                }
+                Some(ConstVal::None)
+            }),
+        (Operator::TableGrow { table_index }, [ConstVal::NullRef, ConstVal::I32(delta)]) => ctx
+            .and_then(|global| {
+                let table = &mut global.tables[*table_index];
+                let old_size = table.size;
+                let Some(new_size) = old_size.checked_add(usize::try_from(*delta).ok()?) else {
+                    return Some(ConstVal::I32(u32::MAX));
+                };
+                if new_size > MAX_TABLE_ELEMENTS || table.max.is_some_and(|max| new_size > max) {
+                    return Some(ConstVal::I32(u32::MAX));
+                }
+                let old_size_u32 = u32::try_from(old_size).ok()?;
+                if table.stores_functions {
+                    table.elements.resize(new_size, Func::invalid());
+                }
+                table.size = new_size;
+                Some(ConstVal::I32(old_size_u32))
+            }),
+        (Operator::TableSet { .. }, _) | (Operator::TableGrow { .. }, _) => None,
 
-        (Operator::TableSize { table_index }, []) => {
-            ctx.map(|global| ConstVal::I32(global.tables[*table_index].elements.len() as u32))
-        }
+        (Operator::TableSize { table_index }, []) => ctx.and_then(|global| {
+            u32::try_from(global.tables[*table_index].size)
+                .ok()
+                .map(ConstVal::I32)
+        }),
 
         (Operator::MemorySize { mem }, []) => {
             ctx.map(|global| ConstVal::I32((global.memories[*mem].data.len() / WASM_PAGE) as u32))
         }
 
         (Operator::MemoryGrow { mem }, [ConstVal::I32(amount)]) => ctx.and_then(|global| {
-            let cur_pages = global.memories[*mem].data.len() / WASM_PAGE;
-            let new_pages = cur_pages + (*amount as usize);
+            let old_bytes = global.memories[*mem].data.len();
+            let cur_pages = old_bytes / WASM_PAGE;
+            let new_pages = cur_pages.checked_add(usize::try_from(*amount).ok()?)?;
             if new_pages > global.memories[*mem].max_pages || new_pages > MAX_PAGES {
                 None
             } else {
-                global.memories[*mem].data.resize(new_pages * WASM_PAGE, 0);
-                Some(ConstVal::I32(cur_pages as u32))
+                let new_bytes = new_pages.checked_mul(WASM_PAGE)?;
+                global.memories[*mem].data.resize(new_bytes, 0);
+                if new_bytes > old_bytes {
+                    global.memory_writes.push(InterpMemoryWrite {
+                        memory: *mem,
+                        addr: u32::try_from(old_bytes).ok()?,
+                        len: u32::try_from(new_bytes - old_bytes).ok()?,
+                    });
+                }
+                Some(ConstVal::I32(u32::try_from(cur_pages).ok()?))
             }
         }),
 
@@ -1065,6 +1175,11 @@ pub fn const_eval(
                     return None;
                 }
                 write_u32(&mut global.memories[memory.memory], addr, *data);
+                global.memory_writes.push(InterpMemoryWrite {
+                    memory: memory.memory,
+                    addr,
+                    len: 4,
+                });
                 Some(ConstVal::None)
             }),
         (Operator::I64Store { memory }, [ConstVal::I32(addr), ConstVal::I64(data)]) => ctx
@@ -1074,6 +1189,11 @@ pub fn const_eval(
                     return None;
                 }
                 write_u64(&mut global.memories[memory.memory], addr, *data);
+                global.memory_writes.push(InterpMemoryWrite {
+                    memory: memory.memory,
+                    addr,
+                    len: 8,
+                });
                 Some(ConstVal::None)
             }),
         (Operator::I32Store8 { memory }, [ConstVal::I32(addr), ConstVal::I32(data)]) => ctx
@@ -1083,6 +1203,11 @@ pub fn const_eval(
                     return None;
                 }
                 write_u8(&mut global.memories[memory.memory], addr, *data as u8);
+                global.memory_writes.push(InterpMemoryWrite {
+                    memory: memory.memory,
+                    addr,
+                    len: 1,
+                });
                 Some(ConstVal::None)
             }),
         (Operator::I32Store16 { memory }, [ConstVal::I32(addr), ConstVal::I32(data)]) => ctx
@@ -1092,6 +1217,11 @@ pub fn const_eval(
                     return None;
                 }
                 write_u16(&mut global.memories[memory.memory], addr, *data as u16);
+                global.memory_writes.push(InterpMemoryWrite {
+                    memory: memory.memory,
+                    addr,
+                    len: 2,
+                });
                 Some(ConstVal::None)
             }),
         (Operator::I64Store8 { memory }, [ConstVal::I32(addr), ConstVal::I64(data)]) => ctx
@@ -1101,6 +1231,11 @@ pub fn const_eval(
                     return None;
                 }
                 write_u8(&mut global.memories[memory.memory], addr, *data as u8);
+                global.memory_writes.push(InterpMemoryWrite {
+                    memory: memory.memory,
+                    addr,
+                    len: 1,
+                });
                 Some(ConstVal::None)
             }),
         (Operator::I64Store16 { memory }, [ConstVal::I32(addr), ConstVal::I64(data)]) => ctx
@@ -1110,6 +1245,11 @@ pub fn const_eval(
                     return None;
                 }
                 write_u16(&mut global.memories[memory.memory], addr, *data as u16);
+                global.memory_writes.push(InterpMemoryWrite {
+                    memory: memory.memory,
+                    addr,
+                    len: 2,
+                });
                 Some(ConstVal::None)
             }),
         (Operator::I64Store32 { memory }, [ConstVal::I32(addr), ConstVal::I64(data)]) => ctx
@@ -1119,6 +1259,11 @@ pub fn const_eval(
                     return None;
                 }
                 write_u32(&mut global.memories[memory.memory], addr, *data as u32);
+                global.memory_writes.push(InterpMemoryWrite {
+                    memory: memory.memory,
+                    addr,
+                    len: 4,
+                });
                 Some(ConstVal::None)
             }),
         (Operator::F32Store { memory }, [ConstVal::I32(addr), ConstVal::F32(data)]) => ctx
@@ -1128,6 +1273,11 @@ pub fn const_eval(
                     return None;
                 }
                 write_u32(&mut global.memories[memory.memory], addr, *data);
+                global.memory_writes.push(InterpMemoryWrite {
+                    memory: memory.memory,
+                    addr,
+                    len: 4,
+                });
                 Some(ConstVal::None)
             }),
         (Operator::F64Store { memory }, [ConstVal::I32(addr), ConstVal::F64(data)]) => ctx
@@ -1137,6 +1287,11 @@ pub fn const_eval(
                     return None;
                 }
                 write_u64(&mut global.memories[memory.memory], addr, *data);
+                global.memory_writes.push(InterpMemoryWrite {
+                    memory: memory.memory,
+                    addr,
+                    len: 8,
+                });
                 Some(ConstVal::None)
             }),
         (_, args) if args.iter().any(|&arg| arg == ConstVal::None) => None,
