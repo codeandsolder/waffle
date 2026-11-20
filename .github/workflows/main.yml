@@ -22,7 +22,7 @@ jobs:
     - uses: actions/checkout@v2
     - uses: dtolnay/rust-toolchain@1.99.0
     - name: Setup mandatory sccache
-      uses: codeandsolder/ci-workflows/.github/actions/setup-sccache@6c75050a784dea5e37d28b094ce9ef3ef6c40829 # main
+      uses: codeandsolder/ci-workflows/.github/actions/setup-sccache@9d478bdbfd4acd0e1a2c015d1ff1d11688eda572 # main
 
     - name: Build
       run: cargo build --verbose
@@ -31,7 +31,7 @@ jobs:
 
     - name: Finalize mandatory sccache
       if: always()
-      uses: codeandsolder/ci-workflows/.github/actions/finalize-sccache@6c75050a784dea5e37d28b094ce9ef3ef6c40829 # main
+      uses: codeandsolder/ci-workflows/.github/actions/finalize-sccache@9d478bdbfd4acd0e1a2c015d1ff1d11688eda572 # main
 
   check_fuzz:
     runs-on: ubuntu-latest
@@ -39,14 +39,14 @@ jobs:
     - uses: actions/checkout@v2
     - uses: dtolnay/rust-toolchain@1.99.0
     - name: Setup mandatory sccache
-      uses: codeandsolder/ci-workflows/.github/actions/setup-sccache@6c75050a784dea5e37d28b094ce9ef3ef6c40829 # main
+      uses: codeandsolder/ci-workflows/.github/actions/setup-sccache@9d478bdbfd4acd0e1a2c015d1ff1d11688eda572 # main
 
     - run: cargo install cargo-fuzz
     - run: cargo fuzz check --dev -s none
 
     - name: Finalize mandatory sccache
       if: always()
-      uses: codeandsolder/ci-workflows/.github/actions/finalize-sccache@6c75050a784dea5e37d28b094ce9ef3ef6c40829 # main
+      uses: codeandsolder/ci-workflows/.github/actions/finalize-sccache@9d478bdbfd4acd0e1a2c015d1ff1d11688eda572 # main
 
   rustfmt:
     runs-on: ubuntu-latest
