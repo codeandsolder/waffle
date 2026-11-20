@@ -21,22 +21,32 @@ jobs:
     steps:
     - uses: actions/checkout@v2
     - uses: dtolnay/rust-toolchain@1.99.0
-    - name: Cache Rust build
-      uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+    - name: Setup mandatory sccache
+      uses: codeandsolder/ci-workflows/.github/actions/setup-sccache@9d478bdbfd4acd0e1a2c015d1ff1d11688eda572 # main
+
     - name: Build
       run: cargo build --verbose
     - name: Run tests
       run: cargo test --verbose
+
+    - name: Finalize mandatory sccache
+      if: always()
+      uses: codeandsolder/ci-workflows/.github/actions/finalize-sccache@9d478bdbfd4acd0e1a2c015d1ff1d11688eda572 # main
 
   check_fuzz:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v2
     - uses: dtolnay/rust-toolchain@1.99.0
-    - name: Cache Rust build
-      uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+    - name: Setup mandatory sccache
+      uses: codeandsolder/ci-workflows/.github/actions/setup-sccache@9d478bdbfd4acd0e1a2c015d1ff1d11688eda572 # main
+
     - run: cargo install cargo-fuzz
     - run: cargo fuzz check --dev -s none
+
+    - name: Finalize mandatory sccache
+      if: always()
+      uses: codeandsolder/ci-workflows/.github/actions/finalize-sccache@9d478bdbfd4acd0e1a2c015d1ff1d11688eda572 # main
 
   rustfmt:
     runs-on: ubuntu-latest
