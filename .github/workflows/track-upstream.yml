@@ -89,7 +89,7 @@ jobs:
           set -euo pipefail
           echo "Downstream: $(git rev-parse HEAD)" >> "$GITHUB_STEP_SUMMARY"
           sed -i 's|^waffle = .*|waffle = { path = ".." }|' Cargo.toml
-          test "$(rg -c '^waffle = \{ path = "\.\." \}$' Cargo.toml)" = 1
+          test "$(sed -n '/^waffle = { path = "\.\." }$/p' Cargo.toml)" = 'waffle = { path = ".." }'
           cargo test -p wasm-redox
       - name: Finalize mandatory sccache
         if: always() && steps.candidate.outputs.checked == 'true'
