@@ -596,6 +596,9 @@ impl<'a> WasmFuncBackend<'a> {
             Operator::TableSize { table_index } => Some(wasm_encoder::Instruction::TableSize(
                 table_index.index() as u32,
             )),
+            Operator::TableFill { table_index } => Some(wasm_encoder::Instruction::TableFill(
+                table_index.index() as u32,
+            )),
             Operator::MemorySize { mem } => {
                 Some(wasm_encoder::Instruction::MemorySize(mem.index() as u32))
             }
@@ -610,6 +613,16 @@ impl<'a> WasmFuncBackend<'a> {
             }
             Operator::MemoryFill { mem } => {
                 Some(wasm_encoder::Instruction::MemoryFill(mem.index() as u32))
+            }
+
+            Operator::MemoryInit { mem, data_index } => {
+                Some(wasm_encoder::Instruction::MemoryInit {
+                    mem: mem.index() as u32,
+                    data_index: *data_index,
+                })
+            }
+            Operator::DataDrop { data_index } => {
+                Some(wasm_encoder::Instruction::DataDrop(*data_index))
             }
 
             Operator::V128Load { memory } => Some(wasm_encoder::Instruction::V128Load(

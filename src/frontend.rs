@@ -1385,6 +1385,7 @@ impl<'a, 'b> FunctionBodyBuilder<'a, 'b> {
             | wasmparser::Operator::TableSet { .. }
             | wasmparser::Operator::TableGrow { .. }
             | wasmparser::Operator::TableSize { .. }
+            | wasmparser::Operator::TableFill { .. }
             | wasmparser::Operator::V128Load { .. }
             | wasmparser::Operator::V128Load8x8S { .. }
             | wasmparser::Operator::V128Load8x8U { .. }
@@ -1626,7 +1627,9 @@ impl<'a, 'b> FunctionBodyBuilder<'a, 'b> {
             | wasmparser::Operator::RefNull { .. }
             | wasmparser::Operator::RefFunc { .. }
             | wasmparser::Operator::MemoryFill { .. }
-            | wasmparser::Operator::MemoryCopy { .. } => {
+            | wasmparser::Operator::MemoryCopy { .. }
+            | wasmparser::Operator::MemoryInit { .. }
+            | wasmparser::Operator::DataDrop { .. } => {
                 let op = Operator::try_from(&op).map_err(|()| {
                     FrontendError::UnsupportedFeature(format!("Unsupported operator: {:?}", op))
                 })?;
