@@ -148,3 +148,58 @@ fn interpreter_i32_load8_u_accepts_last_memory_byte() -> Result<()> {
     );
     Ok(())
 }
+
+#[test]
+fn interpreter_observes_only_in_bounds_accesses_and_preserves_table_kind() -> Result<()> {
+    let bytes = wat::parse_str(
+        r#"(module
+            (memory 1)
+            (table 2 externref)
+            (table 3 funcref)
+            (func (export "load") (param i32) (result i32)
+                local.get 0
+                i32.load8_u)
+            (func (export "store") (param i32)
+                local.get 0
+                i32.const 255
+                i32.store8))"#,
+    )?;
+    let mut module = Module::from_wasm_bytes(&bytes, &FrontendOptions::default())?;
+    module.expand_all_funcs()?;
+    let load = export_func(&module, "load")?;
+    let store = export_func(&module, "store")?;
+    let mut context = InterpContext::new(&module)?;
+    let external = &context.tables[waffle::Table::new(0)];
+    assert!(!external.stores_functions);
+    assert_eq!(external.size, 2);
+    assert!(external.elements.is_empty());
+    let functions = &context.tables[waffle::Table::new(1)];
+    assert!(functions.stores_functions);
+    assert_eq!(functions.elements, vec![Func::invalid(); 3]);
+    context
+        .call(&module, store, &[ConstVal::I32(65_535)])
+        .ok()?;
+    assert_eq!(
+        context
+            .call(&module, load, &[ConstVal::I32(65_535)])
+            .ok()?
+            .as_slice(),
+        [ConstVal::I32(255)]
+    );
+    assert!(context
+        .call(&module, load, &[ConstVal::I32(65_536)])
+        .ok()
+        .is_err());
+    assert!(context
+        .call(&module, store, &[ConstVal::I32(u32::MAX)])
+        .ok()
+        .is_err());
+    let accesses = context.take_memory_accesses();
+    assert_eq!(accesses.len(), 2);
+    assert_eq!(accesses[0].kind, InterpMemoryAccessKind::Write);
+    assert_eq!(accesses[1].kind, InterpMemoryAccessKind::Read);
+    assert!(accesses
+        .iter()
+        .all(|access| access.addr == 65_535 && access.len == 1));
+    Ok(())
+}
