@@ -224,7 +224,13 @@ pub fn op_inputs(
         Operator::TableSize { .. } => Ok(Cow::Borrowed(&[])),
         Operator::MemorySize { .. } => Ok(Cow::Borrowed(&[])),
         Operator::MemoryGrow { .. } => Ok(Cow::Borrowed(&[Type::I32])),
-        Operator::MemoryCopy { .. } => Ok(Cow::Borrowed(&[Type::I32, Type::I32, Type::I32])),
+        Operator::TableFill { table_index } => {
+            Ok(vec![Type::I32, module.tables[*table_index].ty, Type::I32].into())
+        }
+        Operator::MemoryInit { .. } | Operator::MemoryCopy { .. } => {
+            Ok(Cow::Borrowed(&[Type::I32, Type::I32, Type::I32]))
+        }
+        Operator::DataDrop { .. } => Ok(Cow::Borrowed(&[])),
         Operator::MemoryFill { .. } => Ok(Cow::Borrowed(&[Type::I32, Type::I32, Type::I32])),
 
         Operator::V128Load { .. } => Ok(Cow::Borrowed(&[Type::I32])),
@@ -696,7 +702,10 @@ pub fn op_outputs(
         Operator::MemorySize { .. } => Ok(Cow::Borrowed(&[Type::I32])),
         Operator::MemoryGrow { .. } => Ok(Cow::Borrowed(&[Type::I32])),
         Operator::MemoryCopy { .. } => Ok(Cow::Borrowed(&[])),
-        Operator::MemoryFill { .. } => Ok(Cow::Borrowed(&[])),
+        Operator::MemoryFill { .. }
+        | Operator::MemoryInit { .. }
+        | Operator::DataDrop { .. }
+        | Operator::TableFill { .. } => Ok(Cow::Borrowed(&[])),
 
         Operator::V128Load { .. } => Ok(Cow::Borrowed(&[Type::V128])),
         Operator::V128Load8x8S { .. } => Ok(Cow::Borrowed(&[Type::V128])),
@@ -981,6 +990,10 @@ pub enum SideEffect {
     ReadTable,
     /// Operator can write a table element.
     WriteTable,
+    /// Operator can read a passive data segment.
+    ReadData,
+    /// Operator can drop a passive data segment.
+    WriteData,
     /// Operator can read a local.
     ReadLocal,
     /// Operator can write a local.
@@ -1185,6 +1198,9 @@ impl Operator {
             Operator::MemoryGrow { .. } => &[WriteMem, Trap],
             Operator::MemoryCopy { .. } => &[Trap, ReadMem, WriteMem],
             Operator::MemoryFill { .. } => &[Trap, WriteMem],
+            Operator::TableFill { .. } => &[WriteTable, Trap],
+            Operator::MemoryInit { .. } => &[Trap, ReadData, WriteMem],
+            Operator::DataDrop { .. } => &[WriteData],
 
             Operator::V128Load { .. } => &[Trap, ReadMem],
             Operator::V128Load8x8S { .. } => &[Trap, ReadMem],
@@ -1797,12 +1813,18 @@ impl std::fmt::Display for Operator {
             Operator::TableSet { table_index, .. } => write!(f, "table_set<{}>", table_index)?,
             Operator::TableGrow { table_index, .. } => write!(f, "table_grow<{}>", table_index)?,
             Operator::TableSize { table_index, .. } => write!(f, "table_size<{}>", table_index)?,
+            Operator::TableFill { table_index } => write!(f, "table_fill<{}>", table_index)?,
             Operator::MemorySize { mem } => write!(f, "memory_size<{}>", mem)?,
             Operator::MemoryGrow { mem } => write!(f, "memory_grow<{}>", mem)?,
             Operator::MemoryCopy { dst_mem, src_mem } => {
                 write!(f, "memory_copy<{}, {}>", dst_mem, src_mem)?
             }
             Operator::MemoryFill { mem } => write!(f, "memory_fill<{}>", mem)?,
+
+            Operator::MemoryInit { mem, data_index } => {
+                write!(f, "memory_init<{}, data{}>", mem, data_index)?
+            }
+            Operator::DataDrop { data_index } => write!(f, "data_drop<data{}>", data_index)?,
 
             Operator::V128Load { memory } => write!(f, "v128load<{}>", memory)?,
             Operator::V128Load8x8S { memory } => write!(f, "v128load8x8s<{}>", memory)?,
