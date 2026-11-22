@@ -2,7 +2,7 @@
 
 use crate::entity::{EntityRef, PerEntity};
 use crate::ir::*;
-use crate::ops::Operator;
+use crate::ops::{MemoryArg, Operator};
 use smallvec::{smallvec, SmallVec};
 use std::convert::TryFrom;
 
@@ -144,8 +144,12 @@ impl InterpContext {
                 .map(usize::try_from)
                 .transpose()
                 .map_err(|_| anyhow::anyhow!("Table maximum size does not fit usize"))?;
-            let stores_functions = data.func_elements.is_some();
-            let mut elements = data.func_elements.clone().unwrap_or_default();
+            let stores_functions = matches!(data.ty, Type::FuncRef | Type::TypedFuncRef(..));
+            let mut elements = if stores_functions {
+                data.func_elements.clone().unwrap_or_default()
+            } else {
+                Vec::new()
+            };
             if size > MAX_TABLE_ELEMENTS {
                 anyhow::bail!("Table initial size exceeds interpreter limit");
             }
@@ -187,6 +191,29 @@ impl InterpContext {
     /// Return and clear the concrete memory-access trace accumulated so far.
     pub fn take_memory_accesses(&mut self) -> Vec<InterpMemoryAccess> {
         std::mem::take(&mut self.memory_accesses)
+    }
+
+    /// Check an effective address and record the access only when its
+    /// entire byte range is in bounds.
+    fn memory_access(
+        &mut self,
+        memory: MemoryArg,
+        addr: u32,
+        len: u32,
+        kind: InterpMemoryAccessKind,
+    ) -> Option<u32> {
+        let addr = addr.checked_add(memory.offset)?;
+        let end = usize::try_from(addr.checked_add(len)?).ok()?;
+        if end > self.memories[memory.memory].data.len() {
+            return None;
+        }
+        self.memory_accesses.push(InterpMemoryAccess {
+            kind,
+            memory: memory.memory,
+            addr,
+            len,
+        });
+        Some(addr)
     }
 
     /// Call the given function with the given args, running the
@@ -1048,352 +1075,154 @@ pub fn const_eval(
         (Operator::Unreachable, []) => None,
 
         (Operator::I32Load { memory }, [ConstVal::I32(addr)]) => ctx.and_then(|global| {
-            let addr = addr.checked_add(memory.offset)?;
-            if addr.checked_add(4)? > global.memories[memory.memory].data.len() as u32 {
-                return None;
-            }
-            global.memory_accesses.push(InterpMemoryAccess {
-                kind: InterpMemoryAccessKind::Read,
-                memory: memory.memory,
-                addr,
-                len: 4,
-            });
+            let addr = global.memory_access(*memory, *addr, 4, InterpMemoryAccessKind::Read)?;
             Some(ConstVal::I32(read_u32(
                 &global.memories[memory.memory],
                 addr,
             )))
         }),
         (Operator::I64Load { memory }, [ConstVal::I32(addr)]) => ctx.and_then(|global| {
-            let addr = addr.checked_add(memory.offset)?;
-            if addr.checked_add(8)? > global.memories[memory.memory].data.len() as u32 {
-                return None;
-            }
-            global.memory_accesses.push(InterpMemoryAccess {
-                kind: InterpMemoryAccessKind::Read,
-                memory: memory.memory,
-                addr,
-                len: 8,
-            });
+            let addr = global.memory_access(*memory, *addr, 8, InterpMemoryAccessKind::Read)?;
             Some(ConstVal::I64(read_u64(
                 &global.memories[memory.memory],
                 addr,
             )))
         }),
         (Operator::F32Load { memory }, [ConstVal::I32(addr)]) => ctx.and_then(|global| {
-            let addr = addr.checked_add(memory.offset)?;
-            if addr.checked_add(4)? > global.memories[memory.memory].data.len() as u32 {
-                return None;
-            }
-            global.memory_accesses.push(InterpMemoryAccess {
-                kind: InterpMemoryAccessKind::Read,
-                memory: memory.memory,
-                addr,
-                len: 4,
-            });
+            let addr = global.memory_access(*memory, *addr, 4, InterpMemoryAccessKind::Read)?;
             Some(ConstVal::F32(read_u32(
                 &global.memories[memory.memory],
                 addr,
             )))
         }),
         (Operator::F64Load { memory }, [ConstVal::I32(addr)]) => ctx.and_then(|global| {
-            let addr = addr.checked_add(memory.offset)?;
-            if addr.checked_add(8)? > global.memories[memory.memory].data.len() as u32 {
-                return None;
-            }
-            global.memory_accesses.push(InterpMemoryAccess {
-                kind: InterpMemoryAccessKind::Read,
-                memory: memory.memory,
-                addr,
-                len: 8,
-            });
+            let addr = global.memory_access(*memory, *addr, 8, InterpMemoryAccessKind::Read)?;
             Some(ConstVal::F64(read_u64(
                 &global.memories[memory.memory],
                 addr,
             )))
         }),
         (Operator::I32Load8S { memory }, [ConstVal::I32(addr)]) => ctx.and_then(|global| {
-            let addr = addr.checked_add(memory.offset)?;
-            if addr.checked_add(1)? > global.memories[memory.memory].data.len() as u32 {
-                return None;
-            }
-            global.memory_accesses.push(InterpMemoryAccess {
-                kind: InterpMemoryAccessKind::Read,
-                memory: memory.memory,
-                addr,
-                len: 1,
-            });
+            let addr = global.memory_access(*memory, *addr, 1, InterpMemoryAccessKind::Read)?;
             Some(ConstVal::I32(
                 read_u8(&global.memories[memory.memory], addr) as i8 as i32 as u32,
             ))
         }),
         (Operator::I32Load8U { memory }, [ConstVal::I32(addr)]) => ctx.and_then(|global| {
-            let addr = addr.checked_add(memory.offset)?;
-            if addr.checked_add(1)? > global.memories[memory.memory].data.len() as u32 {
-                return None;
-            }
-            global.memory_accesses.push(InterpMemoryAccess {
-                kind: InterpMemoryAccessKind::Read,
-                memory: memory.memory,
-                addr,
-                len: 1,
-            });
+            let addr = global.memory_access(*memory, *addr, 1, InterpMemoryAccessKind::Read)?;
             Some(ConstVal::I32(
                 read_u8(&global.memories[memory.memory], addr) as u32,
             ))
         }),
         (Operator::I32Load16S { memory }, [ConstVal::I32(addr)]) => ctx.and_then(|global| {
-            let addr = addr.checked_add(memory.offset)?;
-            if addr.checked_add(2)? > global.memories[memory.memory].data.len() as u32 {
-                return None;
-            }
-            global.memory_accesses.push(InterpMemoryAccess {
-                kind: InterpMemoryAccessKind::Read,
-                memory: memory.memory,
-                addr,
-                len: 2,
-            });
+            let addr = global.memory_access(*memory, *addr, 2, InterpMemoryAccessKind::Read)?;
             Some(ConstVal::I32(
                 read_u16(&global.memories[memory.memory], addr) as i16 as i32 as u32,
             ))
         }),
         (Operator::I32Load16U { memory }, [ConstVal::I32(addr)]) => ctx.and_then(|global| {
-            let addr = addr.checked_add(memory.offset)?;
-            if addr.checked_add(2)? > global.memories[memory.memory].data.len() as u32 {
-                return None;
-            }
-            global.memory_accesses.push(InterpMemoryAccess {
-                kind: InterpMemoryAccessKind::Read,
-                memory: memory.memory,
-                addr,
-                len: 2,
-            });
+            let addr = global.memory_access(*memory, *addr, 2, InterpMemoryAccessKind::Read)?;
             Some(ConstVal::I32(
                 read_u16(&global.memories[memory.memory], addr) as u32,
             ))
         }),
         (Operator::I64Load8S { memory }, [ConstVal::I32(addr)]) => ctx.and_then(|global| {
-            let addr = addr.checked_add(memory.offset)?;
-            if addr.checked_add(1)? > global.memories[memory.memory].data.len() as u32 {
-                return None;
-            }
-            global.memory_accesses.push(InterpMemoryAccess {
-                kind: InterpMemoryAccessKind::Read,
-                memory: memory.memory,
-                addr,
-                len: 1,
-            });
+            let addr = global.memory_access(*memory, *addr, 1, InterpMemoryAccessKind::Read)?;
             Some(ConstVal::I64(
                 read_u8(&global.memories[memory.memory], addr) as i8 as i64 as u64,
             ))
         }),
         (Operator::I64Load8U { memory }, [ConstVal::I32(addr)]) => ctx.and_then(|global| {
-            let addr = addr.checked_add(memory.offset)?;
-            if addr.checked_add(1)? > global.memories[memory.memory].data.len() as u32 {
-                return None;
-            }
-            global.memory_accesses.push(InterpMemoryAccess {
-                kind: InterpMemoryAccessKind::Read,
-                memory: memory.memory,
-                addr,
-                len: 1,
-            });
+            let addr = global.memory_access(*memory, *addr, 1, InterpMemoryAccessKind::Read)?;
             Some(ConstVal::I64(
                 read_u8(&global.memories[memory.memory], addr) as u64,
             ))
         }),
         (Operator::I64Load16S { memory }, [ConstVal::I32(addr)]) => ctx.and_then(|global| {
-            let addr = addr.checked_add(memory.offset)?;
-            if addr.checked_add(2)? > global.memories[memory.memory].data.len() as u32 {
-                return None;
-            }
-            global.memory_accesses.push(InterpMemoryAccess {
-                kind: InterpMemoryAccessKind::Read,
-                memory: memory.memory,
-                addr,
-                len: 2,
-            });
+            let addr = global.memory_access(*memory, *addr, 2, InterpMemoryAccessKind::Read)?;
             Some(ConstVal::I64(
                 read_u16(&global.memories[memory.memory], addr) as i16 as i64 as u64,
             ))
         }),
         (Operator::I64Load16U { memory }, [ConstVal::I32(addr)]) => ctx.and_then(|global| {
-            let addr = addr.checked_add(memory.offset)?;
-            if addr.checked_add(2)? > global.memories[memory.memory].data.len() as u32 {
-                return None;
-            }
-            global.memory_accesses.push(InterpMemoryAccess {
-                kind: InterpMemoryAccessKind::Read,
-                memory: memory.memory,
-                addr,
-                len: 2,
-            });
+            let addr = global.memory_access(*memory, *addr, 2, InterpMemoryAccessKind::Read)?;
             Some(ConstVal::I64(
                 read_u16(&global.memories[memory.memory], addr) as u64,
             ))
         }),
         (Operator::I64Load32S { memory }, [ConstVal::I32(addr)]) => ctx.and_then(|global| {
-            let addr = addr.checked_add(memory.offset)?;
-            if addr.checked_add(4)? > global.memories[memory.memory].data.len() as u32 {
-                return None;
-            }
-            global.memory_accesses.push(InterpMemoryAccess {
-                kind: InterpMemoryAccessKind::Read,
-                memory: memory.memory,
-                addr,
-                len: 4,
-            });
+            let addr = global.memory_access(*memory, *addr, 4, InterpMemoryAccessKind::Read)?;
             Some(ConstVal::I64(
                 read_u32(&global.memories[memory.memory], addr) as i32 as i64 as u64,
             ))
         }),
         (Operator::I64Load32U { memory }, [ConstVal::I32(addr)]) => ctx.and_then(|global| {
-            let addr = addr.checked_add(memory.offset)?;
-            if addr.checked_add(4)? > global.memories[memory.memory].data.len() as u32 {
-                return None;
-            }
-            global.memory_accesses.push(InterpMemoryAccess {
-                kind: InterpMemoryAccessKind::Read,
-                memory: memory.memory,
-                addr,
-                len: 4,
-            });
+            let addr = global.memory_access(*memory, *addr, 4, InterpMemoryAccessKind::Read)?;
             Some(ConstVal::I64(
                 read_u32(&global.memories[memory.memory], addr) as u64,
             ))
         }),
         (Operator::I32Store { memory }, [ConstVal::I32(addr), ConstVal::I32(data)]) => ctx
             .and_then(|global| {
-                let addr = addr.checked_add(memory.offset)?;
-                if addr.checked_add(4)? > global.memories[memory.memory].data.len() as u32 {
-                    return None;
-                }
+                let addr =
+                    global.memory_access(*memory, *addr, 4, InterpMemoryAccessKind::Write)?;
                 write_u32(&mut global.memories[memory.memory], addr, *data);
-                global.memory_accesses.push(InterpMemoryAccess {
-                    kind: InterpMemoryAccessKind::Write,
-                    memory: memory.memory,
-                    addr,
-                    len: 4,
-                });
                 Some(ConstVal::None)
             }),
         (Operator::I64Store { memory }, [ConstVal::I32(addr), ConstVal::I64(data)]) => ctx
             .and_then(|global| {
-                let addr = addr.checked_add(memory.offset)?;
-                if addr.checked_add(8)? > global.memories[memory.memory].data.len() as u32 {
-                    return None;
-                }
+                let addr =
+                    global.memory_access(*memory, *addr, 8, InterpMemoryAccessKind::Write)?;
                 write_u64(&mut global.memories[memory.memory], addr, *data);
-                global.memory_accesses.push(InterpMemoryAccess {
-                    kind: InterpMemoryAccessKind::Write,
-                    memory: memory.memory,
-                    addr,
-                    len: 8,
-                });
                 Some(ConstVal::None)
             }),
         (Operator::I32Store8 { memory }, [ConstVal::I32(addr), ConstVal::I32(data)]) => ctx
             .and_then(|global| {
-                let addr = addr.checked_add(memory.offset)?;
-                if addr.checked_add(1)? > global.memories[memory.memory].data.len() as u32 {
-                    return None;
-                }
+                let addr =
+                    global.memory_access(*memory, *addr, 1, InterpMemoryAccessKind::Write)?;
                 write_u8(&mut global.memories[memory.memory], addr, *data as u8);
-                global.memory_accesses.push(InterpMemoryAccess {
-                    kind: InterpMemoryAccessKind::Write,
-                    memory: memory.memory,
-                    addr,
-                    len: 1,
-                });
                 Some(ConstVal::None)
             }),
         (Operator::I32Store16 { memory }, [ConstVal::I32(addr), ConstVal::I32(data)]) => ctx
             .and_then(|global| {
-                let addr = addr.checked_add(memory.offset)?;
-                if addr.checked_add(2)? > global.memories[memory.memory].data.len() as u32 {
-                    return None;
-                }
+                let addr =
+                    global.memory_access(*memory, *addr, 2, InterpMemoryAccessKind::Write)?;
                 write_u16(&mut global.memories[memory.memory], addr, *data as u16);
-                global.memory_accesses.push(InterpMemoryAccess {
-                    kind: InterpMemoryAccessKind::Write,
-                    memory: memory.memory,
-                    addr,
-                    len: 2,
-                });
                 Some(ConstVal::None)
             }),
         (Operator::I64Store8 { memory }, [ConstVal::I32(addr), ConstVal::I64(data)]) => ctx
             .and_then(|global| {
-                let addr = addr.checked_add(memory.offset)?;
-                if addr.checked_add(1)? > global.memories[memory.memory].data.len() as u32 {
-                    return None;
-                }
+                let addr =
+                    global.memory_access(*memory, *addr, 1, InterpMemoryAccessKind::Write)?;
                 write_u8(&mut global.memories[memory.memory], addr, *data as u8);
-                global.memory_accesses.push(InterpMemoryAccess {
-                    kind: InterpMemoryAccessKind::Write,
-                    memory: memory.memory,
-                    addr,
-                    len: 1,
-                });
                 Some(ConstVal::None)
             }),
         (Operator::I64Store16 { memory }, [ConstVal::I32(addr), ConstVal::I64(data)]) => ctx
             .and_then(|global| {
-                let addr = addr.checked_add(memory.offset)?;
-                if addr.checked_add(2)? > global.memories[memory.memory].data.len() as u32 {
-                    return None;
-                }
+                let addr =
+                    global.memory_access(*memory, *addr, 2, InterpMemoryAccessKind::Write)?;
                 write_u16(&mut global.memories[memory.memory], addr, *data as u16);
-                global.memory_accesses.push(InterpMemoryAccess {
-                    kind: InterpMemoryAccessKind::Write,
-                    memory: memory.memory,
-                    addr,
-                    len: 2,
-                });
                 Some(ConstVal::None)
             }),
         (Operator::I64Store32 { memory }, [ConstVal::I32(addr), ConstVal::I64(data)]) => ctx
             .and_then(|global| {
-                let addr = addr.checked_add(memory.offset)?;
-                if addr.checked_add(4)? > global.memories[memory.memory].data.len() as u32 {
-                    return None;
-                }
+                let addr =
+                    global.memory_access(*memory, *addr, 4, InterpMemoryAccessKind::Write)?;
                 write_u32(&mut global.memories[memory.memory], addr, *data as u32);
-                global.memory_accesses.push(InterpMemoryAccess {
-                    kind: InterpMemoryAccessKind::Write,
-                    memory: memory.memory,
-                    addr,
-                    len: 4,
-                });
                 Some(ConstVal::None)
             }),
         (Operator::F32Store { memory }, [ConstVal::I32(addr), ConstVal::F32(data)]) => ctx
             .and_then(|global| {
-                let addr = addr.checked_add(memory.offset)?;
-                if addr.checked_add(4)? > global.memories[memory.memory].data.len() as u32 {
-                    return None;
-                }
+                let addr =
+                    global.memory_access(*memory, *addr, 4, InterpMemoryAccessKind::Write)?;
                 write_u32(&mut global.memories[memory.memory], addr, *data);
-                global.memory_accesses.push(InterpMemoryAccess {
-                    kind: InterpMemoryAccessKind::Write,
-                    memory: memory.memory,
-                    addr,
-                    len: 4,
-                });
                 Some(ConstVal::None)
             }),
         (Operator::F64Store { memory }, [ConstVal::I32(addr), ConstVal::F64(data)]) => ctx
             .and_then(|global| {
-                let addr = addr.checked_add(memory.offset)?;
-                if addr.checked_add(8)? > global.memories[memory.memory].data.len() as u32 {
-                    return None;
-                }
+                let addr =
+                    global.memory_access(*memory, *addr, 8, InterpMemoryAccessKind::Write)?;
                 write_u64(&mut global.memories[memory.memory], addr, *data);
-                global.memory_accesses.push(InterpMemoryAccess {
-                    kind: InterpMemoryAccessKind::Write,
-                    memory: memory.memory,
-                    addr,
-                    len: 8,
-                });
                 Some(ConstVal::None)
             }),
         (_, args) if args.iter().any(|&arg| arg == ConstVal::None) => None,
