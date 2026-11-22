@@ -20,6 +20,7 @@ jobs:
       changed: ${{ steps.candidate.outputs.changed }}
       base: ${{ steps.candidate.outputs.base }}
       head: ${{ steps.candidate.outputs.head }}
+      target: ${{ steps.candidate.outputs.target }}
       checked: ${{ steps.candidate.outputs.checked }}
     steps:
       - uses: actions/checkout@v4
@@ -32,14 +33,25 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          base=$(git rev-parse HEAD)
           git fetch --no-tags https://github.com/bytecodealliance/waffle.git main
           upstream=$(git rev-parse FETCH_HEAD)
+          # During the initial migration, keep the existing production main
+          # until downstream validation succeeds. Once main contains 0.4.0,
+          # it becomes the permanent tracking target automatically.
+          if git merge-base --is-ancestor dad4f9cb1e HEAD; then
+            target=main
+          else
+            target=integration/upstream-0.4.0-20261122
+            git fetch --no-tags origin "$target"
+            git checkout --detach FETCH_HEAD
+          fi
+          echo "target=$target" >> "$GITHUB_OUTPUT"
+          base=$(git rev-parse HEAD)
           echo "Base: $base; upstream: $upstream" >> "$GITHUB_STEP_SUMMARY"
           echo "base=$base" >> "$GITHUB_OUTPUT"
           if git merge-base --is-ancestor "$upstream" "$base"; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
-            if [[ "$GITHUB_EVENT_NAME" != workflow_dispatch ]]; then
+            if [[ "$GITHUB_EVENT_NAME" != workflow_dispatch && "$target" == main ]]; then
               echo "checked=false" >> "$GITHUB_OUTPUT"
               exit 0
             fi
@@ -103,7 +115,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: main
+          ref: ${{ needs.validate.outputs.target }}
           fetch-depth: 0
       - uses: actions/download-artifact@v4
         with:
@@ -116,7 +128,7 @@ jobs:
           git fetch "$RUNNER_TEMP/upstream.bundle" HEAD
           test "$(git rev-parse FETCH_HEAD)" = "${{ needs.validate.outputs.head }}"
           git merge --ff-only FETCH_HEAD
-          git push origin HEAD:main
+          git push origin "HEAD:${{ needs.validate.outputs.target }}"
 
   report:
     needs: [validate, publish]
@@ -140,7 +152,7 @@ jobs:
           run_url="$GITHUB_SERVER_URL/$repo/actions/runs/$GITHUB_RUN_ID"
           issue=$(gh issue list --repo "$repo" --state open --limit 100 --json number,title --jq '.[] | select(.title == "Upstream tracking failed") | .number' | head -n1)
           if [[ "$VALIDATE" != success || "$PUBLISH" == failure || "$PUBLISH" == cancelled ]]; then
-            body=$(printf 'Automatic synchronization with bytecodealliance/waffle failed.\n\nValidation: %s\nPublication: %s\n\nLatest run: %s\n\nInspect the failed step, resolve conflicts or regressions, and rerun Track upstream. Main remains on the last accepted revision unless publication already completed.\n' "$VALIDATE" "$PUBLISH" "$run_url")
+            body=$(printf 'Automatic synchronization with bytecodealliance/waffle failed.\n\nValidation: %s\nPublication: %s\n\nLatest run: %s\n\nInspect the failed step, resolve conflicts or regressions, and rerun Track upstream. The tracking branch remains on its last accepted revision unless publication already completed.\n' "$VALIDATE" "$PUBLISH" "$run_url")
             if [[ -n "$issue" ]]; then
               gh issue edit "$issue" --repo "$repo" --body "$body"
             else
