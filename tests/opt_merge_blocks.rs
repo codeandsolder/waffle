@@ -204,3 +204,42 @@ fn condbr_br_ret() {
     "#]]
     .assert_eq(&body.display("", None).to_string());
 }
+
+#[test]
+fn merged_block_preserves_successor_edge_indices() {
+    let mut body = FunctionBody::default();
+    let entry = body.add_block();
+    let branch = body.add_block();
+    let left = body.add_block();
+    let right = body.add_block();
+    let cond = body.add_blockparam(entry, I32);
+    body.entry = entry;
+    body.set_terminator(
+        entry,
+        Terminator::Br {
+            target: block_target(branch),
+        },
+    );
+    body.set_terminator(
+        branch,
+        Terminator::CondBr {
+            cond,
+            if_true: block_target(left),
+            if_false: block_target(right),
+        },
+    );
+    body.set_terminator(left, Terminator::Return { values: vec![] });
+    body.set_terminator(right, Terminator::Return { values: vec![] });
+    body.recompute_edges();
+    body.optimize(&OptOptions::default());
+    body.validate().unwrap();
+    for (block, def) in body.blocks.entries() {
+        assert_eq!(def.succs.len(), def.pos_in_succ_pred.len());
+        assert_eq!(def.preds.len(), def.pos_in_pred_succ.len());
+        for (i, &succ) in def.succs.iter().enumerate() {
+            let pred_index = def.pos_in_succ_pred[i];
+            assert_eq!(body.blocks[succ].preds[pred_index], block);
+            assert_eq!(body.blocks[succ].pos_in_pred_succ[pred_index], i);
+        }
+    }
+}
