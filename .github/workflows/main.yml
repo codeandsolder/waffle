@@ -12,48 +12,17 @@ concurrency:
 
 jobs:
   build:
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        include:
-        - build: x86_64-linux
-          os: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v2
-    - uses: dtolnay/rust-toolchain@stable
-    - name: Setup mandatory sccache
-      uses: codeandsolder/ci-workflows/.github/actions/setup-sccache@9d478bdbfd4acd0e1a2c015d1ff1d11688eda572 # main
-
-    - name: Build
-      run: cargo build --verbose
-    - name: Run tests
-      run: cargo test --verbose
-
-    - name: Finalize mandatory sccache
-      if: always()
-      uses: codeandsolder/ci-workflows/.github/actions/finalize-sccache@9d478bdbfd4acd0e1a2c015d1ff1d11688eda572 # main
+    uses: codeandsolder/ci-workflows/.github/workflows/rust-sccache.yml@436a7b79fe974fd4e7549c945eefbb9b00c2522b # main
+    with:
+      command: |
+        cargo fmt --all -- --check
+        cargo build --verbose
+        cargo test --verbose
 
   check_fuzz:
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v2
-    - uses: dtolnay/rust-toolchain@stable
-    - name: Setup mandatory sccache
-      uses: codeandsolder/ci-workflows/.github/actions/setup-sccache@9d478bdbfd4acd0e1a2c015d1ff1d11688eda572 # main
-
-    - run: cargo install cargo-fuzz
-    - run: cargo fuzz check --dev -s none
-    - run: cargo fuzz run -s none parse_ir -- -max_total_time=30
-
-    - name: Finalize mandatory sccache
-      if: always()
-      uses: codeandsolder/ci-workflows/.github/actions/finalize-sccache@9d478bdbfd4acd0e1a2c015d1ff1d11688eda572 # main
-
-  rustfmt:
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v2
-    - uses: dtolnay/rust-toolchain@stable
-      with:
-        components: rustfmt
-    - run: cargo fmt --all -- --check
+    uses: codeandsolder/ci-workflows/.github/workflows/rust-sccache.yml@436a7b79fe974fd4e7549c945eefbb9b00c2522b # main
+    with:
+      command: |
+        cargo install cargo-fuzz --locked
+        cargo fuzz check --dev -s none
+        cargo fuzz run -s none parse_ir -- -max_total_time=30
