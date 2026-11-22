@@ -1,5 +1,10 @@
 {
   "source": "bytecodealliance/waffle:main",
-  "lastAttempt": 1795351334528,
-  "observations": []
+  "lastAttempt": 1795351335696,
+  "observations": [
+    {
+      "sha": "dad4f9cb1e05014c8e49648bc45e071aad54dca3",
+      "firstObserved": 1795351335696
+    }
+  ]
 }
