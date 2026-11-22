@@ -47,7 +47,7 @@ pub fn run(body: &mut FunctionBody) {
                     pred.insts.append(&mut succ.insts);
                     pred.terminator = succ.terminator;
                     pred.succs = succ.succs;
-                    pred.pos_in_succ_pred = succ.pos_in_pred_succ;
+                    pred.pos_in_succ_pred = succ.pos_in_succ_pred;
 
                     // do NOT fall through, retry on the same block to inline succ blocks "recursively"
                     continue;
