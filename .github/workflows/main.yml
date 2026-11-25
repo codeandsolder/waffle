@@ -17,7 +17,7 @@ jobs:
       command: |
         cargo fmt --all -- --check
         cargo build --verbose
-        cargo test --verbose
+        cargo test --verbose --features cli,dwarf,parallel
 
   check_fuzz:
     uses: codeandsolder/ci-workflows/.github/workflows/rust-sccache.yml@436a7b79fe974fd4e7549c945eefbb9b00c2522b # main

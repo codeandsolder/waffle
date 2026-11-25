@@ -1,56 +1,56 @@
 //! WAFFLE command-line tool.
 
 use anyhow::Result;
+use clap::{Parser, Subcommand};
 use log::debug;
 use std::path::PathBuf;
-use structopt::StructOpt;
 use waffle::{entity::EntityRef, FrontendOptions, Func, Module, OptOptions};
 
-#[derive(Debug, StructOpt)]
-#[structopt(name = "waffle-util", about = "WAFFLE utility.")]
+#[derive(Debug, Parser)]
+#[command(name = "waffle-util", about = "WAFFLE utility.")]
 struct Options {
-    #[structopt(short, long)]
+    #[arg(short, long)]
     debug: bool,
 
-    #[structopt(
+    #[arg(
         help = "Do basic optimizations: GVN and const-prop",
         long = "basic-opts"
     )]
     basic_opts: bool,
 
-    #[structopt(
+    #[arg(
         help = "Enable parsing of debug-info from input",
-        short = "g",
+        short = 'g',
         long = "debug-info"
     )]
     debug_info: bool,
 
-    #[structopt(help = "Transform to maximal SSA", long = "max-ssa")]
+    #[arg(help = "Transform to maximal SSA", long = "max-ssa")]
     max_ssa: bool,
 
-    #[structopt(subcommand)]
+    #[command(subcommand)]
     command: Command,
 }
 
-#[derive(Debug, StructOpt)]
+#[derive(Debug, Subcommand)]
 enum Command {
-    #[structopt(name = "print-ir", about = "Parse Wasm and print resulting IR")]
+    #[command(name = "print-ir", about = "Parse Wasm and print resulting IR")]
     PrintIR {
-        #[structopt(help = "Wasm file to parse")]
+        #[arg(help = "Wasm file to parse")]
         wasm: PathBuf,
     },
-    #[structopt(name = "print-func", about = "Parse Wasm and print one function body")]
+    #[command(name = "print-func", about = "Parse Wasm and print one function body")]
     PrintFunc {
-        #[structopt(help = "Wasm file to parse")]
+        #[arg(help = "Wasm file to parse")]
         wasm: PathBuf,
-        #[structopt(help = "Index of Wasm function to print")]
+        #[arg(help = "Index of Wasm function to print")]
         func: usize,
     },
-    #[structopt(name = "roundtrip", about = "Round-trip Wasm through IR")]
+    #[command(name = "roundtrip", about = "Round-trip Wasm through IR")]
     RoundTrip {
-        #[structopt(help = "Wasm file to parse", short = "i")]
+        #[arg(help = "Wasm file to parse", short = 'i')]
         input: PathBuf,
-        #[structopt(help = "Wasm file to produce", short = "o")]
+        #[arg(help = "Wasm file to produce", short = 'o')]
         output: PathBuf,
     },
 }
@@ -67,7 +67,7 @@ fn apply_options(opts: &Options, module: &mut Module) -> Result<()> {
 }
 
 fn main() -> Result<()> {
-    let opts = Options::from_args();
+    let opts = Options::parse();
 
     let mut logger = env_logger::Builder::from_default_env();
     if opts.debug {

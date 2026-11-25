@@ -8,26 +8,26 @@ edition = "2018"
 repository = "https://github.com/bytecodealliance/waffle"
 
 [dependencies]
-wasmparser = { version = "0.248", default-features = false, features = ["std", "validate", "simd"] }
-wasm-encoder = { version = "0.248", default-features = false }
+wasmparser = { version = "0.263", default-features = false, features = ["std", "validate", "simd"] }
+wasm-encoder = { version = "0.263", default-features = false }
 anyhow = "1.0"
 log = "0.4"
-fxhash = "0.2"
+rustc-hash = "2.1.3"
 smallvec = "1.13"
 
 # Optional dependencies below.
 
 rayon = { version = "1.10", optional = true }
-addr2line = { version = "0.21", optional = true }
-structopt = { version = "0.3", optional = true }
+addr2line = { version = "0.27.1", default-features = false, features = ["std"], optional = true }
+clap = { version = "4.6.9", features = ["derive"], optional = true }
 env_logger = { version = "0.11", optional = true }
 libfuzzer-sys = { version = "0.4.7", optional = true }
-wasm-smith = { version = "0.248", optional = true }
+wasm-smith = { version = "0.263", optional = true }
 
 [dev-dependencies]
-wat = "1.248.0"
+wat = "1.263.0"
 # Enables the `WasmFeatures` constants of `waffle::wasmparser` in tests.
-wasmparser = { version = "0.248", default-features = false, features = ["std", "validate", "features"] }
+wasmparser = { version = "0.263", default-features = false, features = ["std", "validate", "features"] }
 env_logger = "0.11"
 expect-test = "1.5.1"
 
@@ -41,7 +41,7 @@ parallel = ["dep:rayon"]
 dwarf = ["dep:addr2line"]
 
 # Enable the `waffle-util` command-line tool.
-cli = ["dep:structopt", "dep:env_logger"]
+cli = ["dep:clap", "dep:env_logger"]
 
 # Enable fuzzing entrypoints.
 fuzzing = ["libfuzzer-sys", "wasm-smith", "wasm-smith/wasmparser"]

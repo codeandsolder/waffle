@@ -10,8 +10,8 @@ use crate::ops::Operator;
 #[cfg(feature = "dwarf")]
 use addr2line::gimli;
 use anyhow::{bail, Result};
-use fxhash::{FxHashMap, FxHashSet};
 use log::trace;
+use rustc_hash::{FxHashMap, FxHashSet};
 use std::convert::{TryFrom, TryInto};
 use wasmparser::{BlockType, DataKind, ExternalKind, KnownCustom, Name, Parser, Payload, TypeRef};
 
@@ -371,8 +371,11 @@ fn handle_payload<'a>(
                 ));
             }
         }
-        Payload::CodeSectionStart { range, .. } => {
-            extra_sections.code_offset = range.start as u32;
+        Payload::CodeSectionStart {
+            unchecked_range: range,
+            ..
+        } => {
+            extra_sections.code_offset = u32::try_from(range.start)?;
         }
         Payload::CodeSectionEntry(body) => {
             let func_idx = Func::new(*next_func);
@@ -640,8 +643,13 @@ impl<'a> DebugLocReader<'a> {
         }
     }
 
-    fn get_loc(&mut self, offset: usize) -> SourceLoc {
-        let address = u32::try_from(offset).unwrap() - self.code_offset;
+    fn get_loc(&mut self, offset: u64) -> SourceLoc {
+        let Some(address) = u32::try_from(offset)
+            .ok()
+            .and_then(|offset| offset.checked_sub(self.code_offset))
+        else {
+            return SourceLoc::invalid();
+        };
         while self.locs.len() > 0 {
             let (start, len, loc) = self.locs[0];
             if address < start {
@@ -663,7 +671,7 @@ pub(crate) fn parse_body<'a>(
 ) -> Result<FunctionBody> {
     let mut ret: FunctionBody = FunctionBody::default();
 
-    let mut debug_locs = DebugLocReader::new(module, body.range().start as u32);
+    let mut debug_locs = DebugLocReader::new(module, u32::try_from(body.range().start)?);
 
     for &param in &module.signatures[my_sig].params[..] {
         ret.locals.push(param.into());

@@ -7,7 +7,7 @@
 use crate::cfg::CFGInfo;
 use crate::entity::PerEntity;
 use crate::ir::{Block, FunctionBody, Value, ValueDef};
-use fxhash::{FxHashMap as HashMap, FxHashSet as HashSet};
+use rustc_hash::{FxHashMap as HashMap, FxHashSet as HashSet};
 use std::collections::BTreeSet;
 
 pub(crate) fn run(body: &mut FunctionBody, cut_blocks: Option<HashSet<Block>>, cfg: &CFGInfo) {

@@ -6,7 +6,7 @@ use crate::ops::{MemoryArg, Operator};
 use smallvec::{smallvec, SmallVec};
 use std::convert::TryFrom;
 
-use fxhash::FxHashMap as HashMap;
+use rustc_hash::FxHashMap as HashMap;
 
 /// How large do we allow a Wasm memory to be when interpreting? Limit
 /// the size somewhat (apply an implementation limit) so we do not

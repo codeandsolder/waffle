@@ -12,7 +12,7 @@
 use crate::cfg::CFGInfo;
 use crate::entity::EntityRef;
 use crate::ir::{Block, BlockTarget, FunctionBody, Terminator, Type, Value};
-use fxhash::FxHashSet as HashSet;
+use rustc_hash::FxHashSet as HashSet;
 use std::convert::TryFrom;
 
 #[derive(Clone, Debug)]

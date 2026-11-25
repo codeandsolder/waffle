@@ -4,7 +4,7 @@
 use crate::entity::EntityRef;
 use crate::ir::{FunctionBody, Value, ValueDef};
 use crate::Operator;
-use fxhash::{FxHashMap as HashMap, FxHashSet as HashSet};
+use rustc_hash::{FxHashMap as HashMap, FxHashSet as HashSet};
 use std::convert::TryFrom;
 
 /// One "argument slot" of an operator defining a value.

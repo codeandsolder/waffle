@@ -27,7 +27,7 @@
 //! particular, we use this for GVN, where if a key already exists, we
 //! use it rather than setting it again in a more nested scope.
 
-use fxhash::FxHashMap;
+use rustc_hash::FxHashMap;
 use std::fmt::Debug;
 use std::hash::Hash;
 
