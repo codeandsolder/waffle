@@ -11,11 +11,11 @@ permissions:
 
 jobs:
   sync:
-    uses: codeandsolder/ci-workflows/.github/workflows/upstream-tracking.yml@436a7b79fe974fd4e7549c945eefbb9b00c2522b # main
+    uses: codeandsolder/ci-workflows/.github/workflows/upstream-tracking.yml@c9cff3b64df2fb2295270a09e8e38dbf18e31daf # main
     with:
       upstream-repository: bytecodealliance/waffle
       upstream-branch: main
       target-branch: main
-      strategy: merge
+      workflow-policy: preserve
       rust-toolchain: repository
       validation-script: .github/scripts/validate-upstream.sh

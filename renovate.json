@@ -1,16 +1,5 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "extends": [
-    "github>codeandsolder/ci-workflows:renovate-fleet"
-  ],
-  "forkProcessing": "enabled",
-  "packageRules": [
-    {
-      "description": "Cargo dependency versions follow the age-qualified upstream source rather than independent Renovate edits",
-      "matchManagers": [
-        "cargo"
-      ],
-      "enabled": false
-    }
-  ]
+  "extends": ["github>codeandsolder/ci-workflows:renovate-upstream-fork"],
+  "forkProcessing": "enabled"
 }
