@@ -150,8 +150,8 @@
 
 use crate::entity::EntityRef;
 use crate::{cfg::CFGInfo, cfg::RPOIndex, entity::PerEntity, Block, FunctionBody, Value, ValueDef};
-use fxhash::FxHashSet as HashSet;
-use fxhash::{FxHashMap, FxHashSet};
+use rustc_hash::FxHashSet as HashSet;
+use rustc_hash::{FxHashMap, FxHashSet};
 use smallvec::SmallVec;
 use std::borrow::Cow;
 use std::collections::VecDeque;

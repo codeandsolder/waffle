@@ -15,7 +15,7 @@ use crate::backend::treeify::Trees;
 use crate::cfg::CFGInfo;
 use crate::entity::{EntityRef, EntityVec, PerEntity};
 use crate::ir::{Block, FunctionBody, Local, Type, Value, ValueDef};
-use fxhash::FxHashMap as HashMap;
+use rustc_hash::FxHashMap as HashMap;
 use smallvec::{smallvec, SmallVec};
 use std::ops::Range;
 

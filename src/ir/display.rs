@@ -2,7 +2,7 @@
 
 use super::{ElementSegmentKind, Func, FuncDecl, FunctionBody, Module, SourceLoc, ValueDef};
 use crate::entity::EntityRef;
-use fxhash::FxHashMap as HashMap;
+use rustc_hash::FxHashMap as HashMap;
 use std::fmt::{self, Display, Formatter, Result as FmtResult};
 
 /// Hooks to print information after instruction, before and after blocks
@@ -381,7 +381,7 @@ impl<'a, PD: PrintDecorator> Display for ModuleDisplay<'a, PD> {
                         sig,
                         sig_strs.get(&sig).unwrap()
                     )?;
-                    writeln!(f, "  # raw bytes (length {})", reader.range().len())?;
+                    writeln!(f, "  # raw bytes (length {})", reader.as_bytes().len())?;
                 }
                 FuncDecl::Compiled(sig, name, _) => {
                     writeln!(

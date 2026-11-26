@@ -8,9 +8,9 @@ use crate::ir::{
 };
 use crate::Operator;
 use anyhow::Result;
-use fxhash::{FxHashMap, FxHashSet};
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
+use rustc_hash::{FxHashMap, FxHashSet};
 use std::borrow::Cow;
 use std::collections::VecDeque;
 use std::convert::TryFrom;
@@ -1360,7 +1360,7 @@ pub fn compile(module: &Module<'_>) -> anyhow::Result<Vec<u8>> {
         .map(|(func, func_decl)| -> Result<_> {
             match func_decl {
                 FuncDecl::Lazy(_, _name, reader) => {
-                    let data = &module.orig_bytes.unwrap()[reader.range()];
+                    let data = reader.as_bytes();
                     Ok(Cow::Borrowed(data))
                 }
                 FuncDecl::Compiled(_, _name, bytes) => Ok(Cow::Borrowed(&bytes[..])),

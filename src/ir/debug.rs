@@ -4,7 +4,7 @@ use crate::declare_entity;
 use crate::entity::EntityVec;
 #[cfg(feature = "dwarf")]
 use addr2line::gimli;
-use fxhash::FxHashMap as HashMap;
+use rustc_hash::FxHashMap as HashMap;
 use std::collections::hash_map::Entry as HashEntry;
 
 declare_entity!(SourceFile, "file");

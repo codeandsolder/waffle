@@ -11,8 +11,8 @@ use crate::passes::basic_opt::OptOptions;
 use crate::pool::{ListPool, ListRef};
 use crate::Operator;
 use anyhow::Result;
-use fxhash::FxHashMap;
-use fxhash::FxHashSet as HashSet;
+use rustc_hash::FxHashMap;
+use rustc_hash::FxHashSet as HashSet;
 
 /// A declaration of a function: there is one `FuncDecl` per `Func`
 /// index.

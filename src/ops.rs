@@ -15,7 +15,7 @@
 //! control flow (these become `Terminator` instructions).
 
 use crate::{entity::EntityRef, Func, Global, Memory, Signature, Table, Type};
-use std::convert::{TryFrom, TryInto};
+use std::convert::TryInto;
 pub use wasmparser::{Ieee32, Ieee64};
 
 /// An argument to a memory load or store, specifying which memory,
@@ -717,73 +717,73 @@ impl<'a, 'b> std::convert::TryFrom<&'b wasmparser::Operator<'a>> for Operator {
                 global_index: Global::from(global_index),
             }),
             &wasmparser::Operator::I32Load { memarg } => Ok(Operator::I32Load {
-                memory: memarg.into(),
+                memory: memarg.try_into()?,
             }),
             &wasmparser::Operator::I64Load { memarg } => Ok(Operator::I64Load {
-                memory: memarg.into(),
+                memory: memarg.try_into()?,
             }),
             &wasmparser::Operator::F32Load { memarg } => Ok(Operator::F32Load {
-                memory: memarg.into(),
+                memory: memarg.try_into()?,
             }),
             &wasmparser::Operator::F64Load { memarg } => Ok(Operator::F64Load {
-                memory: memarg.into(),
+                memory: memarg.try_into()?,
             }),
             &wasmparser::Operator::I32Load8S { memarg } => Ok(Operator::I32Load8S {
-                memory: memarg.into(),
+                memory: memarg.try_into()?,
             }),
             &wasmparser::Operator::I32Load8U { memarg } => Ok(Operator::I32Load8U {
-                memory: memarg.into(),
+                memory: memarg.try_into()?,
             }),
             &wasmparser::Operator::I32Load16S { memarg } => Ok(Operator::I32Load16S {
-                memory: memarg.into(),
+                memory: memarg.try_into()?,
             }),
             &wasmparser::Operator::I32Load16U { memarg } => Ok(Operator::I32Load16U {
-                memory: memarg.into(),
+                memory: memarg.try_into()?,
             }),
             &wasmparser::Operator::I64Load8S { memarg } => Ok(Operator::I64Load8S {
-                memory: memarg.into(),
+                memory: memarg.try_into()?,
             }),
             &wasmparser::Operator::I64Load8U { memarg } => Ok(Operator::I64Load8U {
-                memory: memarg.into(),
+                memory: memarg.try_into()?,
             }),
             &wasmparser::Operator::I64Load16S { memarg } => Ok(Operator::I64Load16S {
-                memory: memarg.into(),
+                memory: memarg.try_into()?,
             }),
             &wasmparser::Operator::I64Load16U { memarg } => Ok(Operator::I64Load16U {
-                memory: memarg.into(),
+                memory: memarg.try_into()?,
             }),
             &wasmparser::Operator::I64Load32S { memarg } => Ok(Operator::I64Load32S {
-                memory: memarg.into(),
+                memory: memarg.try_into()?,
             }),
             &wasmparser::Operator::I64Load32U { memarg } => Ok(Operator::I64Load32U {
-                memory: memarg.into(),
+                memory: memarg.try_into()?,
             }),
             &wasmparser::Operator::I32Store { memarg } => Ok(Operator::I32Store {
-                memory: memarg.into(),
+                memory: memarg.try_into()?,
             }),
             &wasmparser::Operator::I64Store { memarg } => Ok(Operator::I64Store {
-                memory: memarg.into(),
+                memory: memarg.try_into()?,
             }),
             &wasmparser::Operator::F32Store { memarg } => Ok(Operator::F32Store {
-                memory: memarg.into(),
+                memory: memarg.try_into()?,
             }),
             &wasmparser::Operator::F64Store { memarg } => Ok(Operator::F64Store {
-                memory: memarg.into(),
+                memory: memarg.try_into()?,
             }),
             &wasmparser::Operator::I32Store8 { memarg } => Ok(Operator::I32Store8 {
-                memory: memarg.into(),
+                memory: memarg.try_into()?,
             }),
             &wasmparser::Operator::I32Store16 { memarg } => Ok(Operator::I32Store16 {
-                memory: memarg.into(),
+                memory: memarg.try_into()?,
             }),
             &wasmparser::Operator::I64Store8 { memarg } => Ok(Operator::I64Store8 {
-                memory: memarg.into(),
+                memory: memarg.try_into()?,
             }),
             &wasmparser::Operator::I64Store16 { memarg } => Ok(Operator::I64Store16 {
-                memory: memarg.into(),
+                memory: memarg.try_into()?,
             }),
             &wasmparser::Operator::I64Store32 { memarg } => Ok(Operator::I64Store32 {
-                memory: memarg.into(),
+                memory: memarg.try_into()?,
             }),
             &wasmparser::Operator::I32Const { value } => Ok(Operator::I32Const {
                 value: value as u32,
@@ -969,90 +969,90 @@ impl<'a, 'b> std::convert::TryFrom<&'b wasmparser::Operator<'a>> for Operator {
             &wasmparser::Operator::DataDrop { data_index } => Ok(Operator::DataDrop { data_index }),
 
             &wasmparser::Operator::V128Load { memarg } => Ok(Operator::V128Load {
-                memory: memarg.into(),
+                memory: memarg.try_into()?,
             }),
             &wasmparser::Operator::V128Load8x8S { memarg } => Ok(Operator::V128Load8x8S {
-                memory: memarg.into(),
+                memory: memarg.try_into()?,
             }),
             &wasmparser::Operator::V128Load8x8U { memarg } => Ok(Operator::V128Load8x8U {
-                memory: memarg.into(),
+                memory: memarg.try_into()?,
             }),
             &wasmparser::Operator::V128Load16x4S { memarg } => Ok(Operator::V128Load16x4S {
-                memory: memarg.into(),
+                memory: memarg.try_into()?,
             }),
             &wasmparser::Operator::V128Load16x4U { memarg } => Ok(Operator::V128Load16x4U {
-                memory: memarg.into(),
+                memory: memarg.try_into()?,
             }),
             &wasmparser::Operator::V128Load32x2S { memarg } => Ok(Operator::V128Load32x2S {
-                memory: memarg.into(),
+                memory: memarg.try_into()?,
             }),
             &wasmparser::Operator::V128Load32x2U { memarg } => Ok(Operator::V128Load32x2U {
-                memory: memarg.into(),
+                memory: memarg.try_into()?,
             }),
             &wasmparser::Operator::V128Load8Splat { memarg } => Ok(Operator::V128Load8Splat {
-                memory: memarg.into(),
+                memory: memarg.try_into()?,
             }),
             &wasmparser::Operator::V128Load16Splat { memarg } => Ok(Operator::V128Load16Splat {
-                memory: memarg.into(),
+                memory: memarg.try_into()?,
             }),
             &wasmparser::Operator::V128Load32Splat { memarg } => Ok(Operator::V128Load32Splat {
-                memory: memarg.into(),
+                memory: memarg.try_into()?,
             }),
             &wasmparser::Operator::V128Load64Splat { memarg } => Ok(Operator::V128Load64Splat {
-                memory: memarg.into(),
+                memory: memarg.try_into()?,
             }),
             &wasmparser::Operator::V128Load32Zero { memarg } => Ok(Operator::V128Load32Zero {
-                memory: memarg.into(),
+                memory: memarg.try_into()?,
             }),
             &wasmparser::Operator::V128Load64Zero { memarg } => Ok(Operator::V128Load64Zero {
-                memory: memarg.into(),
+                memory: memarg.try_into()?,
             }),
             &wasmparser::Operator::V128Store { memarg } => Ok(Operator::V128Store {
-                memory: memarg.into(),
+                memory: memarg.try_into()?,
             }),
             &wasmparser::Operator::V128Load8Lane { memarg, lane } => Ok(Operator::V128Load8Lane {
-                memory: memarg.into(),
+                memory: memarg.try_into()?,
                 lane,
             }),
             &wasmparser::Operator::V128Load16Lane { memarg, lane } => {
                 Ok(Operator::V128Load16Lane {
-                    memory: memarg.into(),
+                    memory: memarg.try_into()?,
                     lane,
                 })
             }
             &wasmparser::Operator::V128Load32Lane { memarg, lane } => {
                 Ok(Operator::V128Load32Lane {
-                    memory: memarg.into(),
+                    memory: memarg.try_into()?,
                     lane,
                 })
             }
             &wasmparser::Operator::V128Load64Lane { memarg, lane } => {
                 Ok(Operator::V128Load64Lane {
-                    memory: memarg.into(),
+                    memory: memarg.try_into()?,
                     lane,
                 })
             }
             &wasmparser::Operator::V128Store8Lane { memarg, lane } => {
                 Ok(Operator::V128Store8Lane {
-                    memory: memarg.into(),
+                    memory: memarg.try_into()?,
                     lane,
                 })
             }
             &wasmparser::Operator::V128Store16Lane { memarg, lane } => {
                 Ok(Operator::V128Store16Lane {
-                    memory: memarg.into(),
+                    memory: memarg.try_into()?,
                     lane,
                 })
             }
             &wasmparser::Operator::V128Store32Lane { memarg, lane } => {
                 Ok(Operator::V128Store32Lane {
-                    memory: memarg.into(),
+                    memory: memarg.try_into()?,
                     lane,
                 })
             }
             &wasmparser::Operator::V128Store64Lane { memarg, lane } => {
                 Ok(Operator::V128Store64Lane {
-                    memory: memarg.into(),
+                    memory: memarg.try_into()?,
                     lane,
                 })
             }
@@ -1342,13 +1342,21 @@ impl<'a, 'b> std::convert::TryFrom<&'b wasmparser::Operator<'a>> for Operator {
     }
 }
 
-impl std::convert::From<wasmparser::MemArg> for MemoryArg {
-    fn from(value: wasmparser::MemArg) -> MemoryArg {
-        MemoryArg {
-            align: value.align as u32,
-            offset: u32::try_from(value.offset).expect("offset too large"),
-            memory: Memory::from(value.memory),
+impl std::convert::TryFrom<wasmparser::MemArg> for MemoryArg {
+    type Error = ();
+
+    fn try_from(value: wasmparser::MemArg) -> Result<Self, Self::Error> {
+        let wasmparser::MemArgTarget::Memory(memory) = value.target else {
+            return Err(());
+        };
+        if value.ordering.is_some() {
+            return Err(());
         }
+        Ok(Self {
+            align: u32::from(value.align),
+            offset: u32::try_from(value.offset).map_err(|_| ())?,
+            memory: Memory::from(memory),
+        })
     }
 }
 
@@ -1357,7 +1365,39 @@ impl std::convert::From<MemoryArg> for wasm_encoder::MemArg {
         wasm_encoder::MemArg {
             offset: value.offset as u64,
             align: value.align,
-            memory_index: value.memory.index() as u32,
+            target: wasm_encoder::MemArgTarget::Memory(value.memory.index() as u32),
+            ordering: None,
         }
     }
+}
+
+#[test]
+fn memory_arguments_preserve_target_and_reject_unrepresentable_operands() {
+    let operand = wasmparser::MemArg {
+        align: 2,
+        max_align: 2,
+        offset: 37,
+        target: wasmparser::MemArgTarget::Memory(3),
+        ordering: None,
+    };
+    let ir = <MemoryArg as std::convert::TryFrom<_>>::try_from(operand).unwrap();
+    let encoded = wasm_encoder::MemArg::from(ir);
+    assert_eq!(encoded.target, wasm_encoder::MemArgTarget::Memory(3));
+    assert_eq!(encoded.offset, 37);
+    assert_eq!(encoded.align, 2);
+    assert_eq!(encoded.ordering, None);
+    assert!(
+        <MemoryArg as std::convert::TryFrom<_>>::try_from(wasmparser::MemArg {
+            target: wasmparser::MemArgTarget::Array(3),
+            ..operand
+        })
+        .is_err()
+    );
+    assert!(
+        <MemoryArg as std::convert::TryFrom<_>>::try_from(wasmparser::MemArg {
+            offset: u64::from(u32::MAX) + 1,
+            ..operand
+        })
+        .is_err()
+    );
 }
